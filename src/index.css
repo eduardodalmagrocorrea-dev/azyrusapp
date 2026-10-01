@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #F4F5F9;
+  --sf: #FFFFFF;
+  --ln: #E1E4EE;
+  --tx: #0E1320;
+  --mu: #6B7391;
+  --ac: #2F5BD8;
+  --on: #FFFFFF;
+}
+
+.dark {
+  --bg: #0C1019;
+  --sf: #151B2B;
+  --ln: #242C42;
+  --tx: #E9EDF7;
+  --mu: #8A93B2;
+  --ac: #7AA9FF;
+  --on: #0C1019;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-sf: var(--sf);
+  --color-ln: var(--ln);
+  --color-tx: var(--tx);
+  --color-mu: var(--mu);
+  --color-ac: var(--ac);
+  --color-on: var(--on);
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+input, select, textarea { font-size: 16px; }
+button:focus-visible { outline: 2px solid var(--ac); outline-offset: 2px; }
+.sheet { animation: up .18s ease-out; }
+@keyframes up { from { transform: translateY(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .sheet { animation: none; }
+  * { transition: none !important; }
+}
