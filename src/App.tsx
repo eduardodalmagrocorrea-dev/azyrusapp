@@ -13,6 +13,7 @@ import Workouts from './pages/Workouts';
 import Diet from './pages/Diet';
 import Finance from './pages/Finance';
 import History from './pages/History';
+import PasswordGate from './PasswordGate';
 
 const TABS:[Tab,string,typeof HomeIcon][]=[
   ['home','Início',HomeIcon],['habits','Hábitos',Flame],['tasks','Tarefas',ListChecks],['goals','Metas',Target],['more','Mais',Menu]
@@ -20,6 +21,9 @@ const TABS:[Tab,string,typeof HomeIcon][]=[
 
 export default function App(){
   const [st,setSt]=useLocal<Settings>('azyrus-settings',{name:'Eduardo',theme:'dark',onboarded:false});
+    const [authenticated, setAuthenticated] = useState(
+    () => localStorage.getItem('azyrus-authenticated') === 'true'
+  );
   const [habits,setHabits,r1]=useStore<Habit[]>('habits',[]);
   const [tasks,setTasks,r2]=useStore<Task[]>('tasks',[]);
   const [goals,setGoals,r3]=useStore<Goal[]>('goals',[]);
@@ -39,6 +43,7 @@ export default function App(){
   },[st.theme]);
 
   if(!(r1&&r2&&r3&&r4&&r5&&r6&&r7))return <div className="h-dvh grid place-items-center text-2xl font-light tracking-[.3em]">AZYRUS</div>;
+  if(!authenticated)return <PasswordGate onUnlock={()=>setAuthenticated(true)}/>;
   if(!st.onboarded)return <Welcome st={st} setSt={setSt} setHabits={setHabits} setGoals={setGoals}/>;
 
   const page=tab==='home'

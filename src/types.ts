@@ -57,10 +57,12 @@ export type Workout = {
   id: string;
   name: string;
   date: string;
+  day?: number;
   duration: number;
   notes: string;
   exercises: Exercise[];
   completed: boolean;
+  completedDates?: string[];
 };
 
 export type MealEntry = {
