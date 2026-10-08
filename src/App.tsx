@@ -14,6 +14,7 @@ import Diet from './pages/Diet';
 import Finance from './pages/Finance';
 import History from './pages/History';
 import PasswordGate from './PasswordGate';
+import { subscribeToPush } from './notifications';
 
 const TABS:[Tab,string,typeof HomeIcon][]=[
   ['home','Início',HomeIcon],['habits','Hábitos',Flame],['tasks','Tarefas',ListChecks],['goals','Metas',Target],['more','Mais',Menu]
@@ -65,6 +66,27 @@ export default function App(){
     : <More st={st} setSt={setSt} data={{habits,tasks,goals,workouts,meals,water,finance}} setHabits={setHabits} setTasks={setTasks} setGoals={setGoals} setWorkouts={setWorkouts} setMeals={setMeals} setWater={setWater} setFinance={setFinance} setPage={setMorePage} say={say}/>;
 
   return <div className="h-dvh flex flex-col">
+        <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-50 flex gap-2">
+      <button
+       onClick={async () => {
+        try {
+          const subscribed = await subscribeToPush();
+      
+          if (subscribed) {
+            say('Notificações ativadas.');
+          } else {
+            say('Permissão para notificações negada.');
+          }
+        } catch (error) {
+          console.error(error);
+          say('Erro ao ativar notificações.');
+        }
+      }}
+        className="rounded-full bg-ac px-3 py-2 text-xs text-bg shadow-lg"
+      >
+        Testar notificações
+      </button>
+    </div>
     <main className="flex-1 overflow-y-auto px-5 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-8">
       <div className="mx-auto max-w-md">
         {tab==='more'&&morePage!=='more'&&<button onClick={()=>setMorePage('more')} className="text-sm text-ac mb-4">← Voltar</button>}
