@@ -38,6 +38,19 @@ export type Task = {
   done: boolean;
 };
 
+export type PhysicalRecord = {
+  id: string;
+  date: string;
+  weight?: number;
+  chest?: number;
+  waist?: number;
+  arm?: number;
+  leg?: number;
+  bodyFat?: number;
+  photo?: string;
+  note?: string;
+};
+
 export type Goal = {
   id: string;
   title: string;
@@ -52,6 +65,7 @@ export type Goal = {
   current: number;
   target: number;
   pct: number;
+  physicalRecords?: PhysicalRecord[];
 };
 
 export type ExerciseSet = {
