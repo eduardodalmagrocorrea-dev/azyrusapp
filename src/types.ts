@@ -1,8 +1,22 @@
+
 import type { Dispatch, SetStateAction } from 'react';
 
 export type Setter<T> = Dispatch<SetStateAction<T>>;
-export type Tab = 'home' | 'habits' | 'tasks' | 'goals' | 'more';
-export type MorePage = 'more' | 'workouts' | 'diet' | 'finance' | 'history';
+
+export type Tab =
+  | 'home'
+  | 'habits'
+  | 'workouts'
+  | 'tasks'
+  | 'goals'
+  | 'more';
+
+export type MorePage =
+  | 'more'
+  | 'workouts'
+  | 'diet'
+  | 'finance'
+  | 'history';
 
 export type Habit = {
   id: string;
@@ -28,6 +42,7 @@ export type Goal = {
   id: string;
   title: string;
   desc: string;
+  image?: string;
   due: string;
   category: string;
   status: 'ativa' | 'concluída';
