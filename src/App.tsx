@@ -21,7 +21,7 @@ import type {
   WaterEntry,
   Workout
 } from './types';
-import { today, uid } from './utils';
+import { today } from './utils';
 import { Btn, Field, cx } from './ui';
 import Home from './pages/Home';
 import Habits from './pages/Habits';
@@ -46,7 +46,7 @@ const TABS: [Tab, string, typeof HomeIcon][] = [
 
 export default function App() {
   const [st, setSt] = useLocal<Settings>('azyrus-settings', {
-    name: 'Eduardo',
+    name: '',
     theme: 'dark',
     onboarded: false
   });
@@ -94,14 +94,7 @@ export default function App() {
   }
 
   if (!st.onboarded) {
-    return (
-      <Welcome
-        st={st}
-        setSt={setSt}
-        setHabits={setHabits}
-        setGoals={setGoals}
-      />
-    );
+    return <Welcome st={st} setSt={setSt} />;
   }
 
   const page =
@@ -236,60 +229,21 @@ export default function App() {
 
 function Welcome({
   st,
-  setSt,
-  setHabits,
-  setGoals
+  setSt
 }: {
   st: Settings;
   setSt: (s: Settings) => void;
-  setHabits: (f: (h: Habit[]) => Habit[]) => void;
-  setGoals: (f: (g: Goal[]) => Goal[]) => void;
 }) {
-  const [name, setName] = useState(st.name);
-  const [habit, setHabit] = useState('');
-  const [goal, setGoal] = useState('');
+  const [name, setName] = useState('');
 
-  const finish = (save: boolean) => {
-    if (save) {
-      if (habit.trim()) {
-        setHabits(l => [
-          ...l,
-          {
-            id: uid(),
-            name: habit.trim(),
-            category: 'Pessoal',
-            days: [0, 1, 2, 3, 4, 5, 6],
-            time: '',
-            done: [],
-            created: today()
-          }
-        ]);
-      }
+  const finish = () => {
+    const cleanName = name.trim();
 
-      if (goal.trim()) {
-        setGoals(l => [
-          ...l,
-          {
-            id: uid(),
-            title: goal.trim(),
-            desc: '',
-            due: '',
-            category: 'Pessoal',
-            status: 'ativa',
-            tracked: false,
-            unit: '',
-            start: 0,
-            current: 0,
-            target: 100,
-            pct: 0
-          }
-        ]);
-      }
-    }
+    if (!cleanName) return;
 
     setSt({
       ...st,
-      name: save && name.trim() ? name.trim() : st.name,
+      name: cleanName,
       onboarded: true
     });
   };
@@ -297,41 +251,31 @@ function Welcome({
   return (
     <div className="h-dvh overflow-y-auto px-6 pt-[calc(3rem+env(safe-area-inset-top))] pb-[calc(2rem+env(safe-area-inset-bottom))]">
       <div className="mx-auto max-w-md">
-        <p className="text-sm tracking-[.3em] text-ac mb-8">AZYRUS</p>
+        <p className="text-sm tracking-[.3em] text-ac mb-8">
+          AZYRUS
+        </p>
+
         <h1 className="text-4xl font-light tracking-tight mb-2">
           Bem-vindo.
         </h1>
+
         <p className="text-mu mb-8">
-          Vamos configurar sua rotina. Tudo é opcional.
+          Sua rotina, do seu jeito.
         </p>
 
         <Field
           label="Seu nome"
+          placeholder="Digite seu nome"
           value={name}
           onChange={e => setName(e.target.value)}
         />
-        <Field
-          label="Primeiro hábito (opcional)"
-          placeholder="Ex.: Beber água"
-          value={habit}
-          onChange={e => setHabit(e.target.value)}
-        />
-        <Field
-          label="Primeira meta (opcional)"
-          placeholder="Ex.: Aprender inglês"
-          value={goal}
-          onChange={e => setGoal(e.target.value)}
-        />
 
-        <Btn className="w-full mt-4" onClick={() => finish(true)}>
-          Começar
-        </Btn>
         <Btn
-          variant="ghost"
-          className="w-full mt-3"
-          onClick={() => finish(false)}
+          className="w-full mt-4"
+          onClick={finish}
+          disabled={!name.trim()}
         >
-          Pular
+          Começar
         </Btn>
       </div>
     </div>
