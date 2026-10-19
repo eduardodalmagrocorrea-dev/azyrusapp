@@ -3,7 +3,9 @@ import webpush from 'web-push';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método não permitido' });
+    return res.status(405).json({
+      error: 'Método não permitido',
+    });
   }
 
   const subject = process.env.VAPID_SUBJECT;
@@ -16,8 +18,18 @@ export default async function handler(req: any, res: any) {
       publicKey: Boolean(publicKey),
       privateKey: Boolean(privateKey),
     });
-    return res.status(500).json({ error: 'Configuração de notificações incompleta' });
+
+    return res.status(500).json({
+      error: 'Configuração de notificações incompleta',
+    });
   }
+
+  console.log('Formato da chave pública:', {
+    tamanho: publicKey.length,
+    temIgual: publicKey.includes('='),
+    temEspacos: /\s/.test(publicKey),
+    prefixo: publicKey.slice(0, 8),
+  });
 
   try {
     webpush.setVapidDetails(subject, publicKey, privateKey);
@@ -25,7 +37,9 @@ export default async function handler(req: any, res: any) {
     const { subscription } = req.body ?? {};
 
     if (!subscription) {
-      return res.status(400).json({ error: 'Inscrição não enviada' });
+      return res.status(400).json({
+        error: 'Inscrição não enviada',
+      });
     }
 
     await webpush.sendNotification(
@@ -37,9 +51,14 @@ export default async function handler(req: any, res: any) {
       })
     );
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({
+      success: true,
+    });
   } catch (error) {
     console.error('Erro no envio push:', error);
-    return res.status(500).json({ error: 'Falha ao enviar notificação push' });
+
+    return res.status(500).json({
+      error: 'Falha no envio da notificação push',
+    });
   }
 }

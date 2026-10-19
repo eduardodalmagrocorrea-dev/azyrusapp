@@ -1,14 +1,16 @@
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Plus,
-  Trash2,
+  Search,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
-  CalendarDays,
   Clock,
-  CalendarPlus,
-  Flag
+  Trash2,
+  ArrowLeft,
+  FileText,
+  X,
 } from 'lucide-react';
 import type { Setter, Task } from '../types';
 import { Btn, Card, Empty, Field, Head, Sel, Sheet, cx } from '../ui';
@@ -17,69 +19,199 @@ import { today, uid } from '../utils';
 const CATS = ['Pessoal', 'Estudos', 'Trabalho', 'Casa', 'Outro'];
 const PRI = ['Baixa', 'Média', 'Alta'];
 
-type P = {
-  tasks: Task[];
-  setTasks: Setter<Task[]>;
-  say: (m: string) => void;
-};
-
-const blank = (date = today()): Task => ({
-  id: '',
-  title: '',
-  date,
-  time: '',
-  priority: 1,
-  category: 'Pessoal',
-  done: false
-});
-
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril',
   'Maio', 'Junho', 'Julho', 'Agosto',
-  'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 
 const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+const NOTES_KEY = 'azyrus-notes-v1';
+
+type Note = {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type P = {
+  tasks: Task[];
+  setTasks: Setter<Task[]>;
+  say: (message: string) => void;
+};
 
 const dateKey = (year: number, month: number, day: number) =>
   `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
 const formatDate = (date: string) => {
   if (!date) return '';
-  const [y, m, d] = date.split('-');
-  return `${d}/${m}/${y}`;
+  const [year, month, day] = date.split('-');
+  return `${day}/${month}/${year}`;
 };
 
-const priorityStyle = (priority: number) => {
-  if (priority === 2) {
-    return {
-      label: 'ALTA',
-      color: '#C5221F',
-      background: '#FCE8E6'
-    };
-  }
+const formatNoteDate = (date: string) => {
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return '';
 
-  if (priority === 1) {
-    return {
-      label: 'MÉDIA',
-      color: '#946200',
-      background: '#FFF2CC'
-    };
-  }
+  return parsed.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+  }).replace('.', '');
+};
+
+const blankTask = (date = today()): Task => ({
+  id: '',
+  title: '',
+  date,
+  time: '',
+  priority: 1,
+  category: 'Pessoal',
+  done: false,
+});
+
+const blankNote = (): Note => {
+  const now = new Date().toISOString();
 
   return {
-    label: 'BAIXA',
-    color: '#188038',
-    background: '#E2F3E8'
+    id: '',
+    title: '',
+    content: '',
+    createdAt: now,
+    updatedAt: now,
   };
 };
 
+function loadNotes(): Note[] {
+  try {
+    const stored = localStorage.getItem(NOTES_KEY);
+    if (!stored) return [];
+
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter(
+      (item): item is Note =>
+        item !== null &&
+        typeof item === 'object' &&
+        typeof item.id === 'string' &&
+        typeof item.title === 'string' &&
+        typeof item.content === 'string' &&
+        typeof item.createdAt === 'string' &&
+        typeof item.updatedAt === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
 export default function Tasks({ tasks, setTasks, say }: P) {
-  const now = new Date();
-  const [viewYear, setViewYear] = useState(now.getFullYear());
-  const [viewMonth, setViewMonth] = useState(now.getMonth());
+  const [tab, setTab] = useState<'notes' | 'calendar'>('notes');
+  const [notes, setNotes] = useState<Note[]>(loadNotes);
+  const [search, setSearch] = useState('');
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [viewingNote, setViewingNote] = useState<Note | null>(null);
+  const [taskForm, setTaskForm] = useState<Task | null>(null);
+  const [viewYear, setViewYear] = useState(new Date().getFullYear());
+  const [viewMonth, setViewMonth] = useState(new Date().getMonth());
   const [selectedDate, setSelectedDate] = useState(today());
-  const [form, setForm] = useState<Task | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+    } catch {
+      say('Não foi possível salvar as notas neste aparelho');
+    }
+  }, [notes]);
+
+  const filteredNotes = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('pt-BR');
+
+    return [...notes]
+      .filter(note =>
+        !term ||
+        note.title.toLocaleLowerCase('pt-BR').includes(term) ||
+        note.content.toLocaleLowerCase('pt-BR').includes(term)
+      )
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }, [notes, search]);
+
+  const noteGroups = useMemo(() => {
+    const groups: { title: string; notes: Note[] }[] = [];
+
+    for (const note of filteredNotes) {
+      const date = new Date(note.updatedAt);
+      const now = new Date();
+      const days = Math.floor(
+        (now.getTime() - date.getTime()) / 86400000
+      );
+
+      let title: string;
+
+      if (days >= 0 && days < 30) {
+        title = 'Últimos 30 Dias';
+      } else {
+        const sameYear = date.getFullYear() === now.getFullYear();
+        title = sameYear
+          ? MONTHS[date.getMonth()]
+          : `${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+      }
+
+      let group = groups.find(item => item.title === title);
+
+      if (!group) {
+        group = { title, notes: [] };
+        groups.push(group);
+      }
+
+      group.notes.push(note);
+    }
+
+    return groups;
+  }, [filteredNotes]);
+
+  const saveNote = () => {
+    if (!editingNote) return;
+
+    if (!editingNote.title.trim() && !editingNote.content.trim()) {
+      setEditingNote(null);
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const note: Note = {
+      ...editingNote,
+      title: editingNote.title.trim() || 'Nova Nota',
+      id: editingNote.id || uid(),
+      createdAt: editingNote.createdAt || now,
+      updatedAt: now,
+    };
+
+    setNotes(list =>
+      note.id && list.some(item => item.id === note.id)
+        ? list.map(item => item.id === note.id ? note : item)
+        : [note, ...list]
+    );
+
+    setEditingNote(null);
+    setViewingNote(null);
+    say('Nota salva');
+  };
+
+  const deleteNote = (note: Note) => {
+    if (!confirm(`Excluir a nota "${note.title || 'Nova Nota'}"?`)) return;
+
+    setNotes(list => list.filter(item => item.id !== note.id));
+    setEditingNote(null);
+    setViewingNote(null);
+    say('Nota excluída');
+  };
+
+  const openNote = (note: Note) => {
+    setViewingNote(note);
+    setEditingNote({ ...note });
+  };
 
   const moveMonth = (amount: number) => {
     const date = new Date(viewYear, viewMonth + amount, 1);
@@ -92,7 +224,7 @@ export default function Tasks({ tasks, setTasks, say }: P) {
 
   const calendarDays: (number | null)[] = [
     ...Array.from({ length: firstDay }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
   ];
 
   while (calendarDays.length % 7 !== 0) {
@@ -101,24 +233,20 @@ export default function Tasks({ tasks, setTasks, say }: P) {
 
   const selectedTasks = tasks
     .filter(task => task.date === selectedDate)
-    .sort((a, b) =>
-      b.priority - a.priority ||
-      Number(a.done) - Number(b.done) ||
-      (a.time || '23:59').localeCompare(b.time || '23:59')
-    );
+    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
-  const save = () => {
-    if (!form || !form.title.trim() || !form.date) return;
+  const saveTask = () => {
+    if (!taskForm || !taskForm.title.trim() || !taskForm.date) return;
 
     const task: Task = {
-      ...form,
-      title: form.title.trim(),
-      id: form.id || uid()
+      ...taskForm,
+      title: taskForm.title.trim(),
+      id: taskForm.id || uid(),
     };
 
     setTasks(list =>
-      form.id
-        ? list.map(item => item.id === form.id ? task : item)
+      taskForm.id
+        ? list.map(item => item.id === taskForm.id ? task : item)
         : [...list, task]
     );
 
@@ -128,300 +256,463 @@ export default function Tasks({ tasks, setTasks, say }: P) {
     setViewYear(year);
     setViewMonth(month - 1);
 
-    say(form.id ? 'Evento atualizado' : 'Data importante adicionada');
-    setForm(null);
+    say(taskForm.id ? 'Evento atualizado' : 'Evento adicionado');
+    setTaskForm(null);
   };
 
-  const remove = (task: Task) => {
-    if (confirm(`Excluir "${task.title}"?`)) {
-      setTasks(list => list.filter(item => item.id !== task.id));
-      say('Evento excluído');
-      setForm(null);
-    }
+  const deleteTask = (task: Task) => {
+    if (!confirm(`Excluir "${task.title}"?`)) return;
+
+    setTasks(list => list.filter(item => item.id !== task.id));
+    setTaskForm(null);
+    say('Evento excluído');
   };
 
-  const openNew = (date = selectedDate) => {
-    setForm(blank(date));
-  };
+  const toggleTask = (task: Task) => {
+    setTasks(list =>
+      list.map(item =>
+        item.id === task.id
+          ? { ...item, done: !item.done }
+          : item
+      )
+    );
 
-  const isToday = (date: string) => date === today();
+    say(task.done ? 'Evento reaberto' : 'Evento concluído');
+  };
 
   return (
     <>
       <Head
-        title="Calendário"
+        title={tab === 'notes' ? 'Notas' : 'Calendário'}
         action={
           <Btn
-            onClick={() => openNew()}
-            aria-label="Adicionar data importante"
+            onClick={() => {
+              if (tab === 'notes') {
+                setViewingNote(null);
+                setEditingNote(blankNote());
+              } else {
+                setTaskForm(blankTask(selectedDate));
+              }
+            }}
+            aria-label={tab === 'notes' ? 'Criar nota' : 'Adicionar evento'}
             className="!px-0 w-12"
           >
-            <Plus size={22} />
+            <Plus size={23} />
           </Btn>
         }
       />
 
-      <Card className="!p-4 mb-4">
-        <div className="flex items-center justify-between gap-2 mb-5">
-          <button
-            type="button"
-            onClick={() => moveMonth(-1)}
-            className="flex items-center justify-center size-10 rounded-xl border border-ln"
-            aria-label="Mês anterior"
-          >
-            <ChevronLeft size={20} />
-          </button>
+      <div className="grid grid-cols-2 gap-1 rounded-xl bg-sf p-1 mb-5">
+        <button
+          type="button"
+          onClick={() => setTab('notes')}
+          className={cx(
+            'rounded-lg py-2.5 text-sm font-medium transition-colors',
+            tab === 'notes' ? 'bg-bg shadow-sm text-tx' : 'text-mu'
+          )}
+        >
+          Notas
+        </button>
 
-          <div className="text-center">
-            <h2 className="text-lg font-semibold">
-              {MONTHS[viewMonth]} {viewYear}
-            </h2>
+        <button
+          type="button"
+          onClick={() => setTab('calendar')}
+          className={cx(
+            'rounded-lg py-2.5 text-sm font-medium transition-colors',
+            tab === 'calendar' ? 'bg-bg shadow-sm text-tx' : 'text-mu'
+          )}
+        >
+          Calendário
+        </button>
+      </div>
+
+      {tab === 'notes' && (
+        <>
+          <div className="relative mb-5">
+            <Search
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-mu pointer-events-none"
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              placeholder="Buscar notas"
+              aria-label="Buscar notas"
+              className="w-full rounded-xl border border-ln bg-sf py-3 pl-10 pr-3 text-sm outline-none focus:border-ac"
+            />
+          </div>
+
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-mu">
+              {filteredNotes.length}{' '}
+              {filteredNotes.length === 1 ? 'nota' : 'notas'}
+            </p>
+
             <button
               type="button"
               onClick={() => {
-                const date = new Date();
-                setViewYear(date.getFullYear());
-                setViewMonth(date.getMonth());
-                setSelectedDate(today());
+                setSearch('');
+                setEditingNote(blankNote());
+                setViewingNote(null);
               }}
-              className="text-xs text-mu underline mt-1"
+              className="text-sm text-ac font-medium"
             >
-              Ir para hoje
+              Nova nota
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => moveMonth(1)}
-            className="flex items-center justify-center size-10 rounded-xl border border-ln"
-            aria-label="Próximo mês"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
+          {filteredNotes.length === 0 ? (
+            <Empty
+              text={
+                search
+                  ? 'Nenhuma nota encontrada.'
+                  : 'Tu ainda não criou nenhuma nota.'
+              }
+              action={
+                <Btn onClick={() => setEditingNote(blankNote())}>
+                  <Plus size={18} />
+                  Criar nota
+                </Btn>
+              }
+            />
+          ) : (
+            <div className="space-y-6">
+              {noteGroups.map(group => (
+                <section key={group.title}>
+                  <h3 className="text-sm font-semibold text-mu mb-3">
+                    {group.title}
+                  </h3>
 
-        <div className="grid grid-cols-7 gap-1">
-          {WEEKDAYS.map(day => (
-            <div
-              key={day}
-              className="text-center text-xs text-mu py-2 font-medium"
-            >
-              {day}
-            </div>
-          ))}
+                  <div className="grid grid-cols-2 gap-3">
+                    {group.notes.map(note => (
+                      <button
+                        key={note.id}
+                        type="button"
+                        onClick={() => openNote(note)}
+                        className="min-w-0 text-left rounded-xl border border-ln bg-sf p-3 transition-colors hover:border-ac flex flex-col min-h-36"
+                      >
+                        <div className="flex items-center gap-2 mb-3 text-ac">
+                          <FileText size={17} />
+                          <span className="text-xs text-mu truncate">
+                            {formatNoteDate(note.updatedAt)}
+                          </span>
+                        </div>
 
-          {calendarDays.map((day, index) => {
-            if (day === null) {
-              return <div key={`empty-${index}`} className="min-h-12" />;
-            }
-
-            const date = dateKey(viewYear, viewMonth, day);
-            const dayTasks = tasks.filter(task => task.date === date);
-            const selected = date === selectedDate;
-
-            return (
-              <button
-                key={date}
-                type="button"
-                onClick={() => setSelectedDate(date)}
-                className={cx(
-                  'relative flex flex-col items-center justify-center rounded-xl min-h-12 gap-1 transition-colors',
-                  selected
-                    ? 'bg-ac text-on font-semibold'
-                    : isToday(date)
-                      ? 'border border-ac'
-                      : 'hover:bg-sf'
-                )}
-                aria-label={`${day} de ${MONTHS[viewMonth]}, ${dayTasks.length} eventos`}
-                aria-pressed={selected}
-              >
-                <span className="text-sm">{day}</span>
-
-                {dayTasks.length > 0 && (
-                  <span className="flex gap-0.5 items-center justify-center">
-                    {dayTasks.slice(0, 3).map((task, i) => (
-                      <span
-                        key={task.id || i}
-                        className="size-1 rounded-full"
-                        style={{
-                          background: selected ? 'currentColor' : priorityStyle(task.priority).color
-                        }}
-                      />
-                    ))}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex flex-wrap gap-x-4 gap-y-2 mt-4 text-xs text-mu">
-          <span className="flex items-center gap-1.5">
-            <span className="size-2 rounded-full" style={{ background: '#C5221F' }} />
-            Alta
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="size-2 rounded-full" style={{ background: '#B77900' }} />
-            Média
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="size-2 rounded-full" style={{ background: '#188038' }} />
-            Baixa
-          </span>
-        </div>
-      </Card>
-
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div>
-          <h3 className="font-semibold">Datas importantes</h3>
-          <p className="text-sm text-mu">{formatDate(selectedDate)}</p>
-        </div>
-
-        <Btn onClick={() => openNew(selectedDate)}>
-          <Plus size={18} />
-          Adicionar
-        </Btn>
-      </div>
-
-      {selectedTasks.length === 0 ? (
-        <Empty
-          text="Nenhuma data importante neste dia."
-          action={
-            <Btn onClick={() => openNew(selectedDate)}>
-              <CalendarPlus size={18} />
-              Adicionar evento
-            </Btn>
-          }
-        />
-      ) : (
-        <div className="space-y-2">
-          {selectedTasks.map(task => {
-            const priority = priorityStyle(task.priority);
-
-            return (
-              <Card key={task.id} className="!p-3">
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...task })}
-                  className="w-full text-left"
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="flex items-center justify-center rounded-xl shrink-0"
-                      style={{
-                        width: 42,
-                        height: 42,
-                        background: priority.background,
-                        color: priority.color
-                      }}
-                    >
-                      <Flag size={21} />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <p className={cx(
-                        'font-medium break-words',
-                        task.done && 'line-through text-mu'
-                      )}>
-                        {task.title}
-                      </p>
-
-                      <p className="text-sm text-mu mt-1">
-                        {task.category}
-                      </p>
-
-                      {task.time && (
-                        <p className="flex items-center gap-1 text-sm text-mu mt-1">
-                          <Clock size={14} />
-                          {task.time}
+                        <p className="font-semibold text-sm leading-5 break-words line-clamp-3">
+                          {note.title || 'Nova Nota'}
                         </p>
-                      )}
 
-                      {task.done && (
-                        <p className="text-xs text-mu mt-1">Concluído</p>
-                      )}
-                    </div>
+                        <p className="text-xs text-mu mt-2 whitespace-pre-wrap break-words line-clamp-5">
+                          {note.content || 'Sem texto'}
+                        </p>
 
-                    <span
-                      className="text-xs font-bold rounded-full px-2.5 py-1 shrink-0"
-                      style={{
-                        background: priority.background,
-                        color: priority.color
-                      }}
-                    >
-                      {priority.label}
-                    </span>
+                        <p className="text-xs text-mu mt-auto pt-3">
+                          {note.content.trim()
+                            ? `${note.content.trim().length} caracteres`
+                            : 'Nota vazia'}
+                        </p>
+                      </button>
+                    ))}
                   </div>
-                </button>
-
-                <div className="flex justify-end mt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTasks(list =>
-                        list.map(item =>
-                          item.id === task.id
-                            ? { ...item, done: !item.done }
-                            : item
-                        )
-                      );
-                      say(task.done ? 'Evento reaberto' : 'Evento concluído');
-                    }}
-                    className="text-xs text-mu underline px-2 py-1"
-                  >
-                    {task.done ? 'Marcar pendente' : 'Marcar concluído'}
-                  </button>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {form && (
+      {tab === 'calendar' && (
+        <>
+          <Card className="!p-4 mb-5">
+            <div className="flex items-center justify-between gap-2 mb-5">
+              <button
+                type="button"
+                onClick={() => moveMonth(-1)}
+                className="flex items-center justify-center size-10 rounded-xl border border-ln"
+                aria-label="Mês anterior"
+              >
+                <ChevronLeft size={20} />
+              </button>
+
+              <div className="text-center">
+                <h2 className="text-lg font-semibold">
+                  {MONTHS[viewMonth]} {viewYear}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    setViewYear(now.getFullYear());
+                    setViewMonth(now.getMonth());
+                    setSelectedDate(today());
+                  }}
+                  className="text-xs text-mu underline mt-1"
+                >
+                  Ir para hoje
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => moveMonth(1)}
+                className="flex items-center justify-center size-10 rounded-xl border border-ln"
+                aria-label="Próximo mês"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 gap-1">
+              {WEEKDAYS.map(day => (
+                <div
+                  key={day}
+                  className="text-center text-xs text-mu py-2 font-medium"
+                >
+                  {day}
+                </div>
+              ))}
+
+              {calendarDays.map((day, index) => {
+                if (day === null) {
+                  return <div key={`empty-${index}`} className="min-h-10" />;
+                }
+
+                const date = dateKey(viewYear, viewMonth, day);
+                const dayTasks = tasks.filter(task => task.date === date);
+                const selected = date === selectedDate;
+                const isToday = date === today();
+
+                return (
+                  <button
+                    key={date}
+                    type="button"
+                    onClick={() => setSelectedDate(date)}
+                    className={cx(
+                      'relative flex flex-col items-center justify-center rounded-xl min-h-10 gap-1 transition-colors',
+                      selected
+                        ? 'bg-ac text-on font-semibold'
+                        : isToday
+                          ? 'border border-ac'
+                          : 'hover:bg-sf'
+                    )}
+                    aria-label={`${day} de ${MONTHS[viewMonth]}, ${dayTasks.length} eventos`}
+                    aria-pressed={selected}
+                  >
+                    <span className="text-sm">{day}</span>
+
+                    {dayTasks.length > 0 && (
+                      <span className="flex gap-0.5 items-center justify-center">
+                        {dayTasks.slice(0, 3).map((task, taskIndex) => (
+                          <span
+                            key={task.id || taskIndex}
+                            className="size-1 rounded-full"
+                            style={{
+                              background: selected ? 'currentColor' : 'var(--ac)',
+                            }}
+                          />
+                        ))}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 className="font-semibold">Eventos</h3>
+              <p className="text-sm text-mu">{formatDate(selectedDate)}</p>
+            </div>
+
+            <Btn onClick={() => setTaskForm(blankTask(selectedDate))}>
+              <Plus size={18} />
+              Adicionar
+            </Btn>
+          </div>
+
+          {selectedTasks.length === 0 ? (
+            <Empty
+              text="Nenhum evento neste dia."
+              action={
+                <Btn onClick={() => setTaskForm(blankTask(selectedDate))}>
+                  <CalendarDays size={18} />
+                  Criar evento
+                </Btn>
+              }
+            />
+          ) : (
+            <div className="space-y-2">
+              {selectedTasks.map(task => (
+                <Card key={task.id} className="!p-3">
+                  <button
+                    type="button"
+                    onClick={() => setTaskForm({ ...task })}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex items-center justify-center rounded-xl shrink-0 size-10 bg-sf text-ac">
+                        <CalendarDays size={20} />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className={cx(
+                          'font-medium break-words',
+                          task.done && 'line-through text-mu'
+                        )}>
+                          {task.title}
+                        </p>
+
+                        <p className="text-sm text-mu mt-1">
+                          {task.category}
+                          {task.priority > 0 &&
+                            ` · Prioridade ${PRI[task.priority].toLowerCase()}`}
+                        </p>
+
+                        {task.time && (
+                          <p className="flex items-center gap-1 text-sm text-mu mt-1">
+                            <Clock size={14} />
+                            {task.time}
+                          </p>
+                        )}
+
+                        {task.done && (
+                          <p className="text-xs text-mu mt-1">Concluído</p>
+                        )}
+                      </div>
+
+                      <ChevronRight size={18} className="text-mu shrink-0 mt-1" />
+                    </div>
+                  </button>
+
+                  <div className="flex justify-end mt-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleTask(task)}
+                      className="text-xs text-mu underline px-2 py-1"
+                    >
+                      {task.done ? 'Marcar pendente' : 'Marcar concluído'}
+                    </button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {editingNote && (
         <Sheet
-          title={form.id ? 'Editar data importante' : 'Nova data importante'}
-          onClose={() => setForm(null)}
+          title={viewingNote ? 'Editar nota' : 'Nova nota'}
+          onClose={() => {
+            setEditingNote(null);
+            setViewingNote(null);
+          }}
         >
           <Field
             label="Título"
-            value={form.title}
-            onChange={e => setForm({ ...form, title: e.target.value })}
-            placeholder="Ex.: Aniversário, prova, viagem..."
+            value={editingNote.title}
+            onChange={event =>
+              setEditingNote({ ...editingNote, title: event.target.value })
+            }
+            placeholder="Título da nota"
+            autoFocus
+          />
+
+          <label className="block text-sm font-medium mb-2 mt-4">
+            Texto
+          </label>
+
+          <textarea
+            value={editingNote.content}
+            onChange={event =>
+              setEditingNote({ ...editingNote, content: event.target.value })
+            }
+            placeholder="Comece a escrever..."
+            rows={12}
+            className="w-full resize-y rounded-xl border border-ln bg-sf p-3 text-sm outline-none focus:border-ac"
+          />
+
+          <p className="text-xs text-mu mt-2">
+            Última edição: {formatNoteDate(editingNote.updatedAt)}
+          </p>
+
+          <Btn
+            className="w-full mt-4"
+            onClick={saveNote}
+            disabled={!editingNote.title.trim() && !editingNote.content.trim()}
+          >
+            Salvar nota
+          </Btn>
+
+          {editingNote.id && (
+            <Btn
+              variant="danger"
+              className="w-full mt-3"
+              onClick={() => deleteNote(editingNote)}
+            >
+              <Trash2 size={18} />
+              Excluir nota
+            </Btn>
+          )}
+        </Sheet>
+      )}
+
+      {taskForm && (
+        <Sheet
+          title={taskForm.id ? 'Editar evento' : 'Novo evento'}
+          onClose={() => setTaskForm(null)}
+        >
+          <Field
+            label="Título"
+            value={taskForm.title}
+            onChange={event =>
+              setTaskForm({ ...taskForm, title: event.target.value })
+            }
+            placeholder="Ex.: Prova, aniversário, consulta..."
             autoFocus
           />
 
           <Field
             label="Data"
             type="date"
-            value={form.date}
-            onChange={e => setForm({ ...form, date: e.target.value })}
+            value={taskForm.date}
+            onChange={event =>
+              setTaskForm({ ...taskForm, date: event.target.value })
+            }
           />
 
           <Field
             label="Horário (opcional)"
             type="time"
-            value={form.time}
-            onChange={e => setForm({ ...form, time: e.target.value })}
+            value={taskForm.time}
+            onChange={event =>
+              setTaskForm({ ...taskForm, time: event.target.value })
+            }
           />
 
           <Sel
             label="Categoria"
-            value={form.category}
-            onChange={e => setForm({ ...form, category: e.target.value })}
+            value={taskForm.category}
+            onChange={event =>
+              setTaskForm({ ...taskForm, category: event.target.value })
+            }
           >
             {CATS.map(category => (
-              <option key={category}>{category}</option>
+              <option key={category} value={category}>
+                {category}
+              </option>
             ))}
           </Sel>
 
           <Sel
             label="Prioridade"
-            value={form.priority}
-            onChange={e =>
-              setForm({
-                ...form,
-                priority: Number(e.target.value) as 0 | 1 | 2
+            value={taskForm.priority}
+            onChange={event =>
+              setTaskForm({
+                ...taskForm,
+                priority: Number(event.target.value) as 0 | 1 | 2,
               })
             }
           >
@@ -433,21 +724,21 @@ export default function Tasks({ tasks, setTasks, say }: P) {
           </Sel>
 
           <Btn
-            className="w-full mt-3"
-            onClick={save}
-            disabled={!form.title.trim() || !form.date}
+            className="w-full mt-4"
+            onClick={saveTask}
+            disabled={!taskForm.title.trim() || !taskForm.date}
           >
-            Salvar data
+            Salvar evento
           </Btn>
 
-          {form.id && (
+          {taskForm.id && (
             <Btn
               variant="danger"
               className="w-full mt-3"
-              onClick={() => remove(form)}
+              onClick={() => deleteTask(taskForm)}
             >
               <Trash2 size={18} />
-              Excluir data
+              Excluir evento
             </Btn>
           )}
         </Sheet>

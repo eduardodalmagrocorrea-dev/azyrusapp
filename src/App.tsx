@@ -39,7 +39,7 @@ const TABS: [Tab, string, typeof HomeIcon][] = [
   ['home', 'Início', HomeIcon],
   ['habits', 'Hábitos', Flame],
   ['workouts', 'Treinos', Dumbbell],
-  ['tasks', 'Tarefas', ListChecks],
+  ['tasks', 'Calendário', ListChecks],
   ['goals', 'Metas', Target],
   ['more', 'Mais', Menu]
 ];
