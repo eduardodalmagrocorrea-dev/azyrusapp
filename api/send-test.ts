@@ -1,11 +1,10 @@
 
 import webpush from 'web-push';
+import { supabase } from './lib/supabase';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
-    return res.status(405).json({
-      error: 'Método não permitido',
-    });
+    return res.status(405).json({ error: 'Método não permitido' });
   }
 
   const subject = process.env.VAPID_SUBJECT;
@@ -13,34 +12,38 @@ export default async function handler(req: any, res: any) {
   const privateKey = process.env.VAPID_PRIVATE_KEY;
 
   if (!subject || !publicKey || !privateKey) {
-    console.error('Configuração VAPID incompleta', {
-      subject: Boolean(subject),
-      publicKey: Boolean(publicKey),
-      privateKey: Boolean(privateKey),
-    });
-
     return res.status(500).json({
       error: 'Configuração de notificações incompleta',
     });
   }
 
-  console.log('Formato da chave pública:', {
-    tamanho: publicKey.length,
-    temIgual: publicKey.includes('='),
-    temEspacos: /\s/.test(publicKey),
-    prefixo: publicKey.slice(0, 8),
-  });
-
   try {
-    webpush.setVapidDetails(subject, publicKey, privateKey);
-
     const { subscription } = req.body ?? {};
 
-    if (!subscription) {
+    if (!subscription?.endpoint) {
       return res.status(400).json({
-        error: 'Inscrição não enviada',
+        error: 'Inscrição inválida ou não enviada',
       });
     }
+
+    const { error: dbError } = await supabase
+      .from('push_subscriptions')
+      .upsert(
+        {
+          endpoint: subscription.endpoint,
+          subscription,
+        },
+        { onConflict: 'endpoint' }
+      );
+
+    if (dbError) {
+      console.error('Erro ao salvar inscrição:', dbError);
+      return res.status(500).json({
+        error: 'Não foi possível salvar a inscrição',
+      });
+    }
+
+    webpush.setVapidDetails(subject, publicKey, privateKey);
 
     await webpush.sendNotification(
       subscription,
@@ -51,12 +54,9 @@ export default async function handler(req: any, res: any) {
       })
     );
 
-    return res.status(200).json({
-      success: true,
-    });
+    return res.status(200).json({ success: true });
   } catch (error) {
     console.error('Erro no envio push:', error);
-
     return res.status(500).json({
       error: 'Falha no envio da notificação push',
     });
