@@ -1,6 +1,20 @@
 
 import webpush from 'web-push';
-import { supabase } from './lib/supabase.ts';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SECRET_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Configuração do Supabase incompleta no servidor.');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+});
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
