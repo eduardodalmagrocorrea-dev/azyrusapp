@@ -1,6 +1,6 @@
 
 import webpush from 'web-push';
-import { supabase } from './lib/supabase';
+import { supabase } from './lib/supabase.ts';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
