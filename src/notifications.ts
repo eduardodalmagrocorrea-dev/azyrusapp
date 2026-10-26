@@ -18,7 +18,15 @@ export async function subscribeToPush() {
     !('PushManager' in window) ||
     !('Notification' in window)
   ) {
-    return false;
+    throw new Error('Este navegador não oferece suporte a notificações push.');
+  }
+
+  const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim();
+
+  if (!publicKey) {
+    throw new Error(
+      'VITE_VAPID_PUBLIC_KEY está vazia no build. Verifique o .env.local e recompile.'
+    );
   }
 
   const permission = await Notification.requestPermission();
@@ -32,12 +40,6 @@ export async function subscribeToPush() {
   let subscription = await registration.pushManager.getSubscription();
 
   if (!subscription) {
-    const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-
-    if (!publicKey) {
-      throw new Error('VITE_VAPID_PUBLIC_KEY não configurada.');
-    }
-
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(publicKey),
