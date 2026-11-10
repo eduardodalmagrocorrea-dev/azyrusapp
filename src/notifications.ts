@@ -31,9 +31,11 @@ export async function subscribeToPush() {
 
   const permission = await Notification.requestPermission();
 
-  if (permission !== 'granted') {
-    return false;
-  }
+if (permission !== 'granted') {
+  throw new Error(
+    `Permissão de notificação: ${permission}.`
+  );
+}
 
   const registration = await navigator.serviceWorker.ready;
 
