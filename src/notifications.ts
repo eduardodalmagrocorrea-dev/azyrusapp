@@ -1,4 +1,6 @@
 
+import type { Habit } from './types';
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding)
@@ -31,36 +33,76 @@ export async function subscribeToPush() {
 
   const permission = await Notification.requestPermission();
 
-if (permission !== 'granted') {
-  throw new Error(
-    `Permissão de notificação: ${permission}.`
-  );
-}
+  if (permission !== 'granted') {
+    throw new Error(`Permissão de notificação: ${permission}.`);
+  }
 
   const registration = await navigator.serviceWorker.ready;
 
- let subscription = await registration.pushManager.getSubscription();
+  let subscription = await registration.pushManager.getSubscription();
 
-if (subscription) {
-  await subscription.unsubscribe();
-  subscription = null;
-}
-
-subscription = await registration.pushManager.subscribe({
-  userVisibleOnly: true,
-  applicationServerKey: urlBase64ToUint8Array(publicKey),
-});
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+  }
 
   const response = await fetch('/api/send-test', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ subscription }),
+    body: JSON.stringify({ subscription, publicKey }),
   });
 
   if (!response.ok) {
     throw new Error('Não foi possível registrar a inscrição no servidor.');
+  }
+
+  return true;
+}
+
+export async function syncHabitReminders(habits: Habit[]) {
+  if (!('serviceWorker' in navigator)) return;
+
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.getSubscription();
+
+  if (!subscription) return;
+
+  const reminders = habits
+    .filter(
+      habit =>
+        habit.reminderEnabled &&
+        habit.time &&
+        habit.days.length > 0
+    )
+    .map(habit => ({
+      habitId: habit.id,
+      habitName: habit.name,
+      time: habit.time,
+      days: habit.days,
+    }));
+
+  const timezone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    'America/Sao_Paulo';
+
+  const response = await fetch('/api/sync-habit-reminders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      subscription,
+      reminders,
+      timezone,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Não foi possível sincronizar os lembretes.');
   }
 
   return true;

@@ -24,6 +24,7 @@ export type Habit = {
   category: string;
   days: number[];
   time: string;
+  reminderEnabled?: boolean;
   done: string[];
   created: string;
 };

@@ -18,7 +18,9 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método não permitido' });
+    return res.status(405).json({
+      error: 'Método não permitido',
+    });
   }
 
   const subject = process.env.VAPID_SUBJECT;
@@ -32,11 +34,24 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { subscription } = req.body ?? {};
+    const {
+      subscription,
+      publicKey: clientPublicKey,
+    } = req.body ?? {};
+
+    console.log('Diagnóstico VAPID:', {
+      chavePublicaIgual: clientPublicKey === publicKey,
+    });
 
     if (!subscription?.endpoint) {
       return res.status(400).json({
         error: 'Inscrição inválida ou não enviada',
+      });
+    }
+
+    if (clientPublicKey !== publicKey) {
+      return res.status(400).json({
+        error: 'As chaves públicas VAPID não coincidem.',
       });
     }
 
@@ -52,12 +67,17 @@ export default async function handler(req: any, res: any) {
 
     if (dbError) {
       console.error('Erro ao salvar inscrição:', dbError);
+
       return res.status(500).json({
         error: 'Não foi possível salvar a inscrição',
       });
     }
 
-    webpush.setVapidDetails(subject, publicKey, privateKey);
+    webpush.setVapidDetails(
+      subject,
+      publicKey,
+      privateKey
+    );
 
     await webpush.sendNotification(
       subscription,
@@ -68,9 +88,13 @@ export default async function handler(req: any, res: any) {
       })
     );
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({
+      success: true,
+    });
+
   } catch (error) {
     console.error('Erro no envio push:', error);
+
     return res.status(500).json({
       error: 'Falha no envio da notificação push',
     });
