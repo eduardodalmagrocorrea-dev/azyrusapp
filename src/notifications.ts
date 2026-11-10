@@ -39,14 +39,17 @@ if (permission !== 'granted') {
 
   const registration = await navigator.serviceWorker.ready;
 
-  let subscription = await registration.pushManager.getSubscription();
+ let subscription = await registration.pushManager.getSubscription();
 
-  if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
-    });
-  }
+if (subscription) {
+  await subscription.unsubscribe();
+  subscription = null;
+}
+
+subscription = await registration.pushManager.subscribe({
+  userVisibleOnly: true,
+  applicationServerKey: urlBase64ToUint8Array(publicKey),
+});
 
   const response = await fetch('/api/send-test', {
     method: 'POST',
