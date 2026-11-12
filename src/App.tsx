@@ -21,7 +21,6 @@ import type {
   WaterEntry,
   Workout
 } from './types';
-import { today } from './utils';
 import { Btn, Field, cx } from './ui';
 import Home from './pages/Home';
 import Habits from './pages/Habits';
@@ -33,7 +32,10 @@ import Diet from './pages/Diet';
 import Finance from './pages/Finance';
 import History from './pages/History';
 import PasswordGate from './PasswordGate';
-import { subscribeToPush, syncHabitReminders } from './notifications';
+import {
+  subscribeToPush,
+  syncHabitReminders
+} from './notifications';
 
 const TABS: [Tab, string, typeof HomeIcon][] = [
   ['home', 'Início', HomeIcon],
@@ -45,27 +47,46 @@ const TABS: [Tab, string, typeof HomeIcon][] = [
 ];
 
 export default function App() {
-  const [st, setSt] = useLocal<Settings>('azyrus-settings', {
-    name: '',
-    theme: 'dark',
-    onboarded: false
-  });
-
-  const [authenticated, setAuthenticated] = useState(
-    () => localStorage.getItem('azyrus-authenticated') === 'true'
+  const [st, setSt] = useLocal<Settings>(
+    'azyrus-settings',
+    {
+      name: '',
+      theme: 'dark',
+      onboarded: false
+    }
   );
 
-  const [habits, setHabits, r1] = useStore<Habit[]>('habits', []);
-  const [tasks, setTasks, r2] = useStore<Task[]>('tasks', []);
-  const [goals, setGoals, r3] = useStore<Goal[]>('goals', []);
-  const [workouts, setWorkouts, r4] = useStore<Workout[]>('workouts', []);
-  const [meals, setMeals, r5] = useStore<MealEntry[]>('meals', []);
-  const [water, setWater, r6] = useStore<WaterEntry[]>('water', []);
+  const [authenticated, setAuthenticated] = useState(
+    () =>
+      localStorage.getItem('azyrus-authenticated') ===
+      'true'
+  );
+
+  const [habits, setHabits, r1] =
+    useStore<Habit[]>('habits', []);
+
+  const [tasks, setTasks, r2] =
+    useStore<Task[]>('tasks', []);
+
+  const [goals, setGoals, r3] =
+    useStore<Goal[]>('goals', []);
+
+  const [workouts, setWorkouts, r4] =
+    useStore<Workout[]>('workouts', []);
+
+  const [meals, setMeals, r5] =
+    useStore<MealEntry[]>('meals', []);
+
+  const [water, setWater, r6] =
+    useStore<WaterEntry[]>('water', []);
+
   const [finance, setFinance, r7] =
     useStore<FinanceTransaction[]>('finance', []);
 
   const [tab, setTab] = useState<Tab>('home');
-  const [morePage, setMorePage] = useState<MorePage>('more');
+  const [morePage, setMorePage] =
+    useState<MorePage>('more');
+
   const [msg, setMsg] = useState('');
 
   const say = useCallback((m: string) => {
@@ -74,20 +95,53 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', st.theme === 'dark');
-    document.querySelector('meta[name=theme-color]')?.setAttribute(
-      'content',
-      st.theme === 'dark' ? '#0C1019' : '#F4F5F9'
+    document.documentElement.classList.toggle(
+      'dark',
+      st.theme === 'dark'
     );
+
+    document
+      .querySelector('meta[name=theme-color]')
+      ?.setAttribute(
+        'content',
+        st.theme === 'dark'
+          ? '#0C1019'
+          : '#F4F5F9'
+      );
   }, [st.theme]);
 
   useEffect(() => {
-    if (!r1 || !authenticated || !st.onboarded) return;
+    if (!r1 || !authenticated || !st.onboarded) {
+      return;
+    }
 
     syncHabitReminders(habits).catch(error => {
-      console.error('Erro ao sincronizar lembretes:', error);
+      console.error(
+        'Erro ao sincronizar lembretes:',
+        error
+      );
     });
   }, [habits, r1, authenticated, st.onboarded]);
+
+  const enableNotifications = async () => {
+    try {
+      const subscribed = await subscribeToPush();
+
+      if (subscribed) {
+        await syncHabitReminders(habits);
+        say('Notificações ativadas.');
+      } else {
+        say('Permissão para notificações negada.');
+      }
+    } catch (error) {
+      console.error(
+        'Erro ao ativar notificações:',
+        error
+      );
+
+      say('Erro ao ativar notificações.');
+    }
+  };
 
   if (!(r1 && r2 && r3 && r4 && r5 && r6 && r7)) {
     return (
@@ -98,11 +152,20 @@ export default function App() {
   }
 
   if (!authenticated) {
-    return <PasswordGate onUnlock={() => setAuthenticated(true)} />;
+    return (
+      <PasswordGate
+        onUnlock={() => setAuthenticated(true)}
+      />
+    );
   }
 
   if (!st.onboarded) {
-    return <Welcome st={st} setSt={setSt} />;
+    return (
+      <Welcome
+        st={st}
+        setSt={setSt}
+      />
+    );
   }
 
   const page =
@@ -115,15 +178,35 @@ export default function App() {
         go={setTab}
       />
     ) : tab === 'habits' ? (
-      <Habits habits={habits} setHabits={setHabits} say={say} />
+      <Habits
+        habits={habits}
+        setHabits={setHabits}
+        say={say}
+      />
     ) : tab === 'workouts' ? (
-      <Workouts workouts={workouts} setWorkouts={setWorkouts} say={say} />
+      <Workouts
+        workouts={workouts}
+        setWorkouts={setWorkouts}
+        say={say}
+      />
     ) : tab === 'tasks' ? (
-      <Tasks tasks={tasks} setTasks={setTasks} say={say} />
+      <Tasks
+        tasks={tasks}
+        setTasks={setTasks}
+        say={say}
+      />
     ) : tab === 'goals' ? (
-      <Goals goals={goals} setGoals={setGoals} say={say} />
+      <Goals
+        goals={goals}
+        setGoals={setGoals}
+        say={say}
+      />
     ) : morePage === 'workouts' ? (
-      <Workouts workouts={workouts} setWorkouts={setWorkouts} say={say} />
+      <Workouts
+        workouts={workouts}
+        setWorkouts={setWorkouts}
+        say={say}
+      />
     ) : morePage === 'diet' ? (
       <Diet
         meals={meals}
@@ -133,7 +216,11 @@ export default function App() {
         say={say}
       />
     ) : morePage === 'finance' ? (
-      <Finance items={finance} setItems={setFinance} say={say} />
+      <Finance
+        items={finance}
+        setItems={setFinance}
+        say={say}
+      />
     ) : morePage === 'history' ? (
       <History
         habits={habits}
@@ -147,7 +234,15 @@ export default function App() {
       <More
         st={st}
         setSt={setSt}
-        data={{ habits, tasks, goals, workouts, meals, water, finance }}
+        data={{
+          habits,
+          tasks,
+          goals,
+          workouts,
+          meals,
+          water,
+          finance
+        }}
         setHabits={setHabits}
         setTasks={setTasks}
         setGoals={setGoals}
@@ -157,44 +252,26 @@ export default function App() {
         setFinance={setFinance}
         setPage={setMorePage}
         say={say}
+        onEnableNotifications={enableNotifications}
       />
     );
 
   return (
     <div className="h-dvh flex flex-col">
-      <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-50 flex gap-2">
-        <button
-          onClick={async () => {
-            try {
-              const subscribed = await subscribeToPush();
-
-              if (subscribed) {
-                await syncHabitReminders(habits);
-                say('Notificações ativadas.');
-              } else {
-                say('Permissão para notificações negada.');
-              }
-            } catch (error) {
-              console.error(error);
-              say('Erro ao ativar notificações.');
-            }
-          }}
-          className="rounded-full bg-ac px-3 py-2 text-xs text-bg shadow-lg"
-        >
-          Testar notificações
-        </button>
-      </div>
-
       <main className="flex-1 overflow-y-auto px-5 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-8">
         <div className="mx-auto max-w-md">
-          {tab === 'more' && morePage !== 'more' && (
-            <button
-              onClick={() => setMorePage('more')}
-              className="text-sm text-ac mb-4"
-            >
-              ← Voltar
-            </button>
-          )}
+          {tab === 'more' &&
+            morePage !== 'more' && (
+              <button
+                onClick={() =>
+                  setMorePage('more')
+                }
+                className="text-sm text-ac mb-4"
+              >
+                ← Voltar
+              </button>
+            )}
+
           {page}
         </div>
       </main>
@@ -209,12 +286,21 @@ export default function App() {
               key={id}
               onClick={() => {
                 setTab(id);
-                if (id !== 'more') setMorePage('more');
+
+                if (id !== 'more') {
+                  setMorePage('more');
+                }
               }}
-              aria-current={tab === id ? 'page' : undefined}
+              aria-current={
+                tab === id
+                  ? 'page'
+                  : undefined
+              }
               className={cx(
                 'flex flex-col items-center justify-center gap-1 text-xs',
-                tab === id ? 'text-ac' : 'text-mu'
+                tab === id
+                  ? 'text-ac'
+                  : 'text-mu'
               )}
             >
               <Icon size={20} />
@@ -276,7 +362,9 @@ function Welcome({
           label="Seu nome"
           placeholder="Digite seu nome"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={e =>
+            setName(e.target.value)
+          }
         />
 
         <Btn
