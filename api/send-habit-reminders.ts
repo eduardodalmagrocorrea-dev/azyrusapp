@@ -1,6 +1,6 @@
 
 import webpush from 'web-push';
-import { supabase } from './lib/supabase';
+import { supabase } from './lib/supabase.js';
 
 function getLocalTime(timezone: string) {
   const parts = new Intl.DateTimeFormat('en-US', {
