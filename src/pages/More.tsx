@@ -1,9 +1,18 @@
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
+  ArrowDown,
+  ArrowLeftRight,
+  ArrowUp,
   Bell,
   Download,
+  Dumbbell,
+  Flame,
   History,
+  Home,
+  ListChecks,
+  Settings2,
+  Target,
   Trash2,
   Upload
 } from 'lucide-react';
@@ -14,12 +23,20 @@ import type {
   MealEntry,
   Setter,
   Settings,
+  Tab,
   Task,
   WaterEntry,
   Workout
 } from '../types';
-import { Btn, Card, Field, Head, cx } from '../ui';
+import { Btn, Card, Field, Head, Sheet, cx } from '../ui';
 import { today } from '../utils';
+
+export type NavId = Exclude<Tab, 'more'>;
+
+export type NavigationLayout = {
+  bar: NavId[];
+  settings: NavId[];
+};
 
 type Data = {
   habits: Habit[];
@@ -47,7 +64,48 @@ type P = {
   ) => void;
   say: (m: string) => void;
   onEnableNotifications: () => void;
+  navigation: NavigationLayout;
+  setNavigation: Setter<NavigationLayout>;
+  onOpenTab: (id: NavId) => void;
 };
+
+const NAV_ITEMS: {
+  id: NavId;
+  label: string;
+  description: string;
+  icon: typeof Home;
+}[] = [
+  {
+    id: 'home',
+    label: 'Início',
+    description: 'Visão geral do aplicativo',
+    icon: Home
+  },
+  {
+    id: 'habits',
+    label: 'Hábitos',
+    description: 'Seus hábitos diários',
+    icon: Flame
+  },
+  {
+    id: 'workouts',
+    label: 'Treinos',
+    description: 'Planejamento de exercícios',
+    icon: Dumbbell
+  },
+  {
+    id: 'tasks',
+    label: 'Calendário',
+    description: 'Tarefas e anotações',
+    icon: ListChecks
+  },
+  {
+    id: 'goals',
+    label: 'Metas',
+    description: 'Seus objetivos',
+    icon: Target
+  }
+];
 
 export default function More({
   st,
@@ -62,9 +120,132 @@ export default function More({
   setFinance,
   setPage,
   say,
-  onEnableNotifications
+  onEnableNotifications,
+  navigation,
+  setNavigation,
+  onOpenTab
 }: P) {
   const file = useRef<HTMLInputElement>(null);
+  const [editingNavigation, setEditingNavigation] =
+    useState(false);
+
+  const moveTo = (
+    id: NavId,
+    destination: 'bar' | 'settings'
+  ) => {
+    setNavigation(current => ({
+      bar:
+        destination === 'bar'
+          ? [...current.bar.filter(x => x !== id), id]
+          : current.bar.filter(x => x !== id),
+      settings:
+        destination === 'settings'
+          ? [...current.settings.filter(x => x !== id), id]
+          : current.settings.filter(x => x !== id)
+    }));
+  };
+
+  const reorder = (
+    id: NavId,
+    location: 'bar' | 'settings',
+    direction: -1 | 1
+  ) => {
+    setNavigation(current => {
+      const items = [...current[location]];
+      const index = items.indexOf(id);
+      const next = index + direction;
+
+      if (
+        index < 0 ||
+        next < 0 ||
+        next >= items.length
+      ) {
+        return current;
+      }
+
+      [items[index], items[next]] = [
+        items[next],
+        items[index]
+      ];
+
+      return {
+        ...current,
+        [location]: items
+      };
+    });
+  };
+
+  const renderNavigationItem = (
+    id: NavId,
+    location: 'bar' | 'settings',
+    index: number,
+    total: number
+  ) => {
+    const item = NAV_ITEMS.find(x => x.id === id);
+    if (!item) return null;
+
+    const Icon = item.icon;
+    const destination =
+      location === 'bar' ? 'settings' : 'bar';
+
+    return (
+      <div
+        key={id}
+        className="flex items-center gap-2 rounded-xl border border-ln p-2 mb-2"
+      >
+        <span className="size-9 shrink-0 rounded-lg bg-bg grid place-items-center">
+          <Icon size={18} />
+        </span>
+
+        <span className="flex-1 min-w-0 text-sm font-medium truncate">
+          {item.label}
+        </span>
+
+        <button
+          type="button"
+          aria-label={`Mover ${item.label} para cima`}
+          title="Mover para cima"
+          disabled={index === 0}
+          onClick={() => reorder(id, location, -1)}
+          className="size-9 shrink-0 rounded-lg border border-ln grid place-items-center disabled:opacity-25"
+        >
+          <ArrowUp size={17} />
+        </button>
+
+        <button
+          type="button"
+          aria-label={`Mover ${item.label} para baixo`}
+          title="Mover para baixo"
+          disabled={index === total - 1}
+          onClick={() => reorder(id, location, 1)}
+          className="size-9 shrink-0 rounded-lg border border-ln grid place-items-center disabled:opacity-25"
+        >
+          <ArrowDown size={17} />
+        </button>
+
+        <button
+          type="button"
+          aria-label={`Mover ${item.label} para ${
+            destination === 'bar'
+              ? 'a barra inferior'
+              : 'Ajustes'
+          }`}
+          title={
+            destination === 'bar'
+              ? 'Colocar na barra inferior'
+              : 'Colocar em Ajustes'
+          }
+          onClick={() => moveTo(id, destination)}
+          className="flex flex-col items-center justify-center gap-0.5 min-w-14 h-10 px-1 rounded-lg bg-bg text-ac"
+        >
+          <ArrowLeftRight size={15} />
+          <span className="text-[10px]">
+            {destination === 'bar' ? 'Barra' : 'Ajustes'}
+          </span>
+        </button>
+      </div>
+    );
+  };
 
   const exportData = async () => {
     const blob = new Blob(
@@ -208,6 +389,60 @@ export default function More({
       <Head title="Ajustes" />
 
       <div className="space-y-3">
+        {navigation.settings.length > 0 && (
+          <div className="space-y-3">
+            {navigation.settings.map(id => {
+              const item = NAV_ITEMS.find(
+                x => x.id === id
+              );
+
+              if (!item) return null;
+
+              const Icon = item.icon;
+
+              return (
+                <Card
+                  key={id}
+                  onClick={() => onOpenTab(id)}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="size-11 shrink-0 rounded-xl bg-bg grid place-items-center">
+                      <Icon size={21} />
+                    </span>
+
+                    <div>
+                      <p className="font-medium">
+                        {item.label}
+                      </p>
+                      <p className="text-sm text-mu">
+                        {item.description}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        <Card
+          onClick={() => setEditingNavigation(true)}
+        >
+          <div className="flex items-center gap-3">
+            <span className="size-11 rounded-xl bg-bg grid place-items-center">
+              <Settings2 size={21} />
+            </span>
+
+            <div>
+              <p className="font-medium">
+                Personalizar navegação
+              </p>
+              <p className="text-sm text-mu">
+                Organizar ícones e mover páginas
+              </p>
+            </div>
+          </div>
+        </Card>
 
         <Card onClick={() => setPage('history')}>
           <div className="flex items-center gap-3">
@@ -335,8 +570,71 @@ export default function More({
             Ativar notificações
           </Btn>
         </Card>
-
       </div>
+
+      {editingNavigation && (
+        <Sheet
+          title="Personalizar navegação"
+          onClose={() => setEditingNavigation(false)}
+        >
+          <p className="text-sm text-mu mb-5">
+            Use as setas para mudar a ordem.
+            Use o botão Barra ou Ajustes para
+            escolher onde cada página aparece.
+          </p>
+
+          <p className="font-medium mb-3">
+            Barra inferior
+          </p>
+
+          {navigation.bar.length === 0 && (
+            <p className="text-sm text-mu mb-3">
+              Nenhuma página nesta área.
+            </p>
+          )}
+
+          {navigation.bar.map((id, index) =>
+            renderNavigationItem(
+              id,
+              'bar',
+              index,
+              navigation.bar.length
+            )
+          )}
+
+          <p className="font-medium mt-6 mb-3">
+            Dentro de Ajustes
+          </p>
+
+          {navigation.settings.length === 0 && (
+            <p className="text-sm text-mu mb-3">
+              Nenhuma página movida para Ajustes.
+            </p>
+          )}
+
+          {navigation.settings.map((id, index) =>
+            renderNavigationItem(
+              id,
+              'settings',
+              index,
+              navigation.settings.length
+            )
+          )}
+
+          <p className="text-xs text-mu mt-5 mb-4">
+            Ajustes permanece na barra inferior
+            para que você sempre possa alterar
+            a navegação.
+          </p>
+
+          <Btn
+            className="w-full"
+            onClick={() => setEditingNavigation(false)}
+          >
+            Concluir
+          </Btn>
+        </Sheet>
+      )}
     </>
   );
 }

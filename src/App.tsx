@@ -30,7 +30,9 @@ import Home from './pages/Home';
 import Habits from './pages/Habits';
 import Tasks from './pages/Tasks';
 import Goals from './pages/Goals';
-import More from './pages/More';
+import More, {
+  type NavigationLayout
+} from './pages/More';
 import Workouts from './pages/Workouts';
 import Diet from './pages/Diet';
 import Finance from './pages/Finance';
@@ -51,6 +53,17 @@ const TABS: [Tab, string, typeof HomeIcon][] = [
   ['more', 'Ajustes', Cog]
 ];
 
+const DEFAULT_NAVIGATION: NavigationLayout = {
+  bar: [
+    'home',
+    'habits',
+    'workouts',
+    'tasks',
+    'goals'
+  ],
+  settings: []
+};
+
 export default function App() {
   const [st, setSt] = useLocal<Settings>(
     'azyrus-settings',
@@ -61,9 +74,16 @@ export default function App() {
     }
   );
 
+  const [navigation, setNavigation] =
+    useLocal<NavigationLayout>(
+      'azyrus-navigation',
+      DEFAULT_NAVIGATION
+    );
+
   const [authenticated, setAuthenticated] = useState(
     () =>
-      localStorage.getItem('azyrus-authenticated') === 'true'
+      localStorage.getItem('azyrus-authenticated') ===
+      'true'
   );
 
   const [habits, setHabits, r1] =
@@ -147,6 +167,11 @@ export default function App() {
       say('Erro ao ativar notificações.');
     }
   };
+
+  const visibleTabs: Tab[] = [
+    ...navigation.bar,
+    'more'
+  ];
 
   if (!(r1 && r2 && r3 && r4 && r5 && r6 && r7)) {
     return (
@@ -258,6 +283,12 @@ export default function App() {
         setPage={setMorePage}
         say={say}
         onEnableNotifications={enableNotifications}
+        navigation={navigation}
+        setNavigation={setNavigation}
+        onOpenTab={id => {
+          setTab(id);
+          setMorePage('more');
+        }}
       />
     );
 
@@ -277,6 +308,19 @@ export default function App() {
               </button>
             )}
 
+          {tab !== 'more' &&
+            navigation.settings.includes(tab) && (
+              <button
+                onClick={() => {
+                  setTab('more');
+                  setMorePage('more');
+                }}
+                className="text-sm text-ac mb-4"
+              >
+                ← Ajustes
+              </button>
+            )}
+
           {page}
         </div>
       </main>
@@ -285,33 +329,52 @@ export default function App() {
         className="shrink-0 border-t border-ln bg-sf pb-[env(safe-area-inset-bottom)]"
         aria-label="Navegação principal"
       >
-        <div className="mx-auto max-w-md grid grid-cols-6 h-16">
-          {TABS.map(([id, label, Icon]) => (
-            <button
-              key={id}
-              onClick={() => {
-                setTab(id);
+        <div
+          className="mx-auto max-w-md grid h-16"
+          style={{
+            gridTemplateColumns:
+              `repeat(${visibleTabs.length}, minmax(0, 1fr))`
+          }}
+        >
+          {visibleTabs.map(id => {
+            const item = TABS.find(
+              ([key]) => key === id
+            );
 
-                if (id !== 'more') {
-                  setMorePage('more');
+            if (!item) return null;
+
+            const [, label, Icon] = item;
+
+            return (
+              <button
+                key={id}
+                onClick={() => {
+                  setTab(id);
+
+                  if (id !== 'more') {
+                    setMorePage('more');
+                  }
+                }}
+                aria-current={
+                  tab === id
+                    ? 'page'
+                    : undefined
                 }
-              }}
-              aria-current={
-                tab === id
-                  ? 'page'
-                  : undefined
-              }
-              className={cx(
-                'flex flex-col items-center justify-center gap-1 text-xs',
-                tab === id
-                  ? 'text-ac'
-                  : 'text-mu'
-              )}
-            >
-              <Icon size={20} />
-              <span>{label}</span>
-            </button>
-          ))}
+                className={cx(
+                  'flex flex-col items-center justify-center gap-1 text-xs min-w-0',
+                  tab === id
+                    ? 'text-ac'
+                    : 'text-mu'
+                )}
+              >
+                <Icon size={20} />
+
+                <span className="truncate max-w-full px-1">
+                  {label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </nav>
 
