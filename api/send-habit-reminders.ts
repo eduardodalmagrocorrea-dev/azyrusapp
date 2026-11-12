@@ -57,14 +57,16 @@ export default async function handler(req: any, res: any) {
   const privateKey = process.env.VAPID_PRIVATE_KEY;
 
   if (!subject || !publicKey || !privateKey) {
+    console.error('Configuração VAPID incompleta');
+
     return res.status(500).json({
       error: 'Configuração VAPID incompleta',
     });
   }
 
-  webpush.setVapidDetails(subject, publicKey, privateKey);
-
   try {
+    webpush.setVapidDetails(subject, publicKey, privateKey);
+
     const { data: reminders, error } = await supabase
       .from('habit_reminders')
       .select('*')
@@ -72,6 +74,7 @@ export default async function handler(req: any, res: any) {
 
     if (error) {
       console.error('Erro ao buscar lembretes:', error);
+
       return res.status(500).json({
         error: 'Não foi possível buscar os lembretes.',
       });
@@ -82,7 +85,9 @@ export default async function handler(req: any, res: any) {
     for (const reminder of reminders ?? []) {
       try {
         const local = getLocalTime(reminder.timezone);
+
         const [hour, minute] = local.time.split(':').map(Number);
+
         const [targetHour, targetMinute] = reminder.reminder_time
           .slice(0, 5)
           .split(':')
@@ -101,7 +106,7 @@ export default async function handler(req: any, res: any) {
           continue;
         }
 
-        // Reserva o envio para evitar notificações duplicadas.
+        // Reserva o envio para evitar duplicações.
         const { data: claimed, error: claimError } = await supabase
           .from('habit_reminders')
           .update({
@@ -133,7 +138,7 @@ export default async function handler(req: any, res: any) {
         if (subscriptionError || !registered?.subscription) {
           console.error(
             'Inscrição não encontrada:',
-            reminder.endpoint
+            subscriptionError
           );
 
           await supabase
@@ -161,13 +166,16 @@ export default async function handler(req: any, res: any) {
           error
         );
 
-        // Permite tentar novamente se o envio falhar.
+        // Permite nova tentativa caso o envio falhe.
         await supabase
           .from('habit_reminders')
           .update({ last_sent_date: null })
           .eq('endpoint', reminder.endpoint)
           .eq('habit_id', reminder.habit_id)
-          .eq('last_sent_date', getLocalTime(reminder.timezone).date);
+          .eq(
+            'last_sent_date',
+            getLocalTime(reminder.timezone).date
+          );
 
         if (error?.statusCode === 404 || error?.statusCode === 410) {
           await supabase
