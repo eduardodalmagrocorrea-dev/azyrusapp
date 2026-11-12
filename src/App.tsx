@@ -169,6 +169,7 @@ export default function App() {
               const subscribed = await subscribeToPush();
 
               if (subscribed) {
+                await syncHabitReminders(habits);
                 say('Notificações ativadas.');
               } else {
                 say('Permissão para notificações negada.');
@@ -188,9 +189,7 @@ export default function App() {
         <div className="mx-auto max-w-md">
           {tab === 'more' && morePage !== 'more' && (
             <button
-              onClick={() => {
-                setMorePage('more');
-              }}
+              onClick={() => setMorePage('more')}
               className="text-sm text-ac mb-4"
             >
               ← Voltar
