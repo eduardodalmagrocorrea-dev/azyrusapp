@@ -1,14 +1,16 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Cog,
   Dumbbell,
   Flame,
   Home as HomeIcon,
   ListChecks,
-  Menu,
   Target
 } from 'lucide-react';
+
 import { useLocal, useStore } from './hooks';
+
 import type {
   Goal,
   Habit,
@@ -21,7 +23,9 @@ import type {
   WaterEntry,
   Workout
 } from './types';
+
 import { Btn, Field, cx } from './ui';
+
 import Home from './pages/Home';
 import Habits from './pages/Habits';
 import Tasks from './pages/Tasks';
@@ -32,6 +36,7 @@ import Diet from './pages/Diet';
 import Finance from './pages/Finance';
 import History from './pages/History';
 import PasswordGate from './PasswordGate';
+
 import {
   subscribeToPush,
   syncHabitReminders
@@ -43,7 +48,7 @@ const TABS: [Tab, string, typeof HomeIcon][] = [
   ['workouts', 'Treinos', Dumbbell],
   ['tasks', 'Calendário', ListChecks],
   ['goals', 'Metas', Target],
-  ['more', 'Mais', Menu]
+  ['more', 'Ajustes', Cog]
 ];
 
 export default function App() {
@@ -58,8 +63,7 @@ export default function App() {
 
   const [authenticated, setAuthenticated] = useState(
     () =>
-      localStorage.getItem('azyrus-authenticated') ===
-      'true'
+      localStorage.getItem('azyrus-authenticated') === 'true'
   );
 
   const [habits, setHabits, r1] =
@@ -84,6 +88,7 @@ export default function App() {
     useStore<FinanceTransaction[]>('finance', []);
 
   const [tab, setTab] = useState<Tab>('home');
+
   const [morePage, setMorePage] =
     useState<MorePage>('more');
 

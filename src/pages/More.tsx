@@ -2,13 +2,10 @@
 import { useRef } from 'react';
 import {
   Bell,
-  Dumbbell,
   Download,
-  DollarSign,
   History,
   Trash2,
-  Upload,
-  Utensils
+  Upload
 } from 'lucide-react';
 import type {
   FinanceTransaction,
@@ -45,7 +42,9 @@ type P = {
   setMeals: Setter<MealEntry[]>;
   setWater: Setter<WaterEntry[]>;
   setFinance: Setter<FinanceTransaction[]>;
-  setPage: (p: 'more' | 'workouts' | 'diet' | 'finance' | 'history') => void;
+  setPage: (
+    p: 'more' | 'workouts' | 'diet' | 'finance' | 'history'
+  ) => void;
   say: (m: string) => void;
   onEnableNotifications: () => void;
 };
@@ -204,55 +203,28 @@ export default function More({
     say('Dados apagados');
   };
 
-  const menus = [
-    [
-      'workouts',
-      'Treinos',
-      'Registre exercícios, séries, repetições e cargas',
-      Dumbbell
-    ],
-    [
-      'diet',
-      'Dieta',
-      'Calorias, macros, refeições e água',
-      Utensils
-    ],
-    [
-      'finance',
-      'Finanças',
-      'Receitas, despesas e saldo',
-      DollarSign
-    ],
-    [
-      'history',
-      'Histórico',
-      'Resumo das suas atividades',
-      History
-    ]
-  ] as const;
-
   return (
     <>
-      <Head title="Mais" />
+      <Head title="Ajustes" />
 
       <div className="space-y-3">
-        {menus.map(([p, title, desc, Icon]) => (
-          <Card
-            key={p}
-            onClick={() => setPage(p)}
-          >
-            <div className="flex items-center gap-3">
-              <span className="size-11 rounded-xl bg-bg grid place-items-center">
-                <Icon size={21} />
-              </span>
 
-              <div>
-                <p className="font-medium">{title}</p>
-                <p className="text-sm text-mu">{desc}</p>
-              </div>
+        <Card onClick={() => setPage('history')}>
+          <div className="flex items-center gap-3">
+            <span className="size-11 rounded-xl bg-bg grid place-items-center">
+              <History size={21} />
+            </span>
+
+            <div>
+              <p className="font-medium">
+                Histórico
+              </p>
+              <p className="text-sm text-mu">
+                Resumo das suas atividades
+              </p>
             </div>
-          </Card>
-        ))}
+          </div>
+        </Card>
 
         <Card>
           <p className="font-medium mb-3">
@@ -304,8 +276,8 @@ export default function More({
           </p>
 
           <p className="text-sm text-mu">
-            Os dados ficam no armazenamento local deste
-            navegador/app. Faça backups regularmente.
+            Os dados ficam no armazenamento local
+            deste navegador/app. Faça backups regularmente.
           </p>
 
           <Btn
@@ -346,12 +318,12 @@ export default function More({
 
         <Card className="space-y-3">
           <p className="font-medium">
-            Lembretes
+            Notificações
           </p>
 
           <p className="text-sm text-mu">
-            Ative as notificações para receber lembretes
-            dos seus hábitos nos horários programados.
+            Receba lembretes dos seus hábitos
+            nos horários programados.
           </p>
 
           <Btn
@@ -363,6 +335,7 @@ export default function More({
             Ativar notificações
           </Btn>
         </Card>
+
       </div>
     </>
   );
