@@ -33,7 +33,7 @@ import Diet from './pages/Diet';
 import Finance from './pages/Finance';
 import History from './pages/History';
 import PasswordGate from './PasswordGate';
-import { subscribeToPush } from './notifications';
+import { subscribeToPush, syncHabitReminders } from './notifications';
 
 const TABS: [Tab, string, typeof HomeIcon][] = [
   ['home', 'Início', HomeIcon],
@@ -80,6 +80,14 @@ export default function App() {
       st.theme === 'dark' ? '#0C1019' : '#F4F5F9'
     );
   }, [st.theme]);
+
+  useEffect(() => {
+    if (!r1 || !authenticated || !st.onboarded) return;
+
+    syncHabitReminders(habits).catch(error => {
+      console.error('Erro ao sincronizar lembretes:', error);
+    });
+  }, [habits, r1, authenticated, st.onboarded]);
 
   if (!(r1 && r2 && r3 && r4 && r5 && r6 && r7)) {
     return (
@@ -180,7 +188,9 @@ export default function App() {
         <div className="mx-auto max-w-md">
           {tab === 'more' && morePage !== 'more' && (
             <button
-              onClick={() => setMorePage('more')}
+              onClick={() => {
+                setMorePage('more');
+              }}
               className="text-sm text-ac mb-4"
             >
               ← Voltar
