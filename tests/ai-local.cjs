@@ -22,9 +22,12 @@ const security = load('api/lib/security.ts', { 'node:crypto': require('node:cryp
 const auth = load('api/auth.ts', { './lib/security.js': security }, { process: { env } }).default;
 const validate = load('src/aiProposals.ts', {}, { Date, Set }).validateProposals;
 let modelCalls = 0;
+let modelStatus = 200;
+let modelUrl = '';
+const modelLogs = [];
 let modelText = JSON.stringify({ mensagem: 'Pronto', registros: [{ type: 'event', name: 'Consulta', date: '2026-12-01' }] });
-const fakeFetch = async () => { modelCalls++; return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: modelText }] } }] }) }; };
-const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposals.js': { validateProposals: validate } }, { process: { env }, fetch: fakeFetch }).default;
+const fakeFetch = async url => { modelCalls++; modelUrl = url; return { ok: modelStatus === 200, status: modelStatus, json: async () => ({ candidates: [{ content: { parts: [{ text: modelText }] } }] }) }; };
+const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposals.js': { validateProposals: validate } }, { process: { env }, fetch: fakeFetch, console: { error: (...args) => modelLogs.push(args) } }).default;
 
 (async () => {
   const base = { headers: { host: 'test.example', origin: 'https://test.example', 'x-vercel-forwarded-for': '192.0.2.1' } };
@@ -57,6 +60,19 @@ const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposal
   await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
   assert.equal(res.code, 200);
   assert.equal(res.body.registros[0].name, 'Consulta');
+  assert.match(modelUrl, /\/gemini-3\.5-flash-lite:generateContent$/);
+  modelStatus = 403;
+  res = response();
+  await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
+  assert.equal(res.code, 502);
+  assert.match(res.body.error, /HTTP 403/);
+  assert.equal(modelLogs.at(-1)[1].status, 403);
+  assert.equal(JSON.stringify(modelLogs).includes(env.GEMINI_API_KEY), false);
+  modelStatus = 429;
+  res = response();
+  await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
+  assert.equal(res.code, 429);
+  modelStatus = 200;
   modelText = JSON.stringify({ mensagem: 'ok', registros: [{ type: 'event', name: 'x', date: '2026-02-30' }] });
   res = response();
   await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
