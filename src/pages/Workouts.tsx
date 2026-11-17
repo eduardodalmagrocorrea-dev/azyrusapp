@@ -147,13 +147,15 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
 
   const changeSetCount = (exercise: Exercise, count: number) => {
     updateExercise(exercise.id, {
+      pendingWeight: count === 0 ? exercise.sets[0]?.weight ?? exercise.pendingWeight : undefined,
+      pendingReps: count === 0 ? exercise.sets[0]?.reps || exercise.pendingReps : undefined,
       sets: Array.from(
         { length: count },
         (_, index) =>
           exercise.sets[index] ?? {
             id: uid(),
-            reps: exercise.sets[0]?.reps ?? 0,
-            weight: exercise.sets[0]?.weight ?? 0,
+            reps: exercise.sets[0]?.reps ?? exercise.pendingReps ?? 0,
+            weight: exercise.sets[0]?.weight ?? exercise.pendingWeight ?? 0,
           },
       ),
     });
@@ -330,7 +332,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
 
                       <p className="text-xs text-mu mt-1 flex items-center gap-1">
                         <Clock3 size={13} />
-                        Descanso: {exercise.rest}s
+                        Descanso: {exercise.rest ? `${exercise.rest}s` : 'não informado'}
                       </p>
                     </div>
 
@@ -345,6 +347,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                     <span className="text-right">REPS</span>
                   </div>
 
+                  {exercise.sets.length === 0 && <p className="px-4 py-3 text-sm text-mu">Séries pendentes{exercise.pendingWeight !== undefined ? ` · Carga: ${exercise.pendingWeight} kg` : ''}{exercise.pendingReps !== undefined ? ` · Repetições: ${exercise.pendingReps}` : ''}</p>}
                   {exercise.sets.map((set, setIndex) => {
                     const key = `${exercise.id}:${set.id}`;
                     const checked = doneSets.includes(key);
@@ -375,7 +378,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                         </span>
 
                         <span className="text-right font-semibold">
-                          {set.reps}
+                          {set.reps || 'Pendente'}
                         </span>
                       </button>
                     );
@@ -536,6 +539,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                       )
                     }
                   >
+                    <option value={0}>Pendente</option>
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((count) => (
                       <option key={count} value={count}>
                         {count} séries
@@ -555,8 +559,8 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                 />
 
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Repetições para todas" type="number" min="0" placeholder="Não informado" value={exercise.sets.every(set => set.reps === exercise.sets[0]?.reps) ? exercise.sets[0]?.reps || '' : ''} onChange={event => updateExercise(exercise.id, { sets: exercise.sets.map(set => ({ ...set, reps: Number(event.target.value) || 0 })) })} />
-                  <Field label="Carga para todas (kg)" type="number" min="0" step="0.5" placeholder="Não informada" value={exercise.sets.every(set => set.weight === exercise.sets[0]?.weight) ? exercise.sets[0]?.weight || '' : ''} onChange={event => updateExercise(exercise.id, { sets: exercise.sets.map(set => ({ ...set, weight: Number(event.target.value) || 0 })) })} />
+                  <Field label="Repetições para todas" type="number" min="0" placeholder="Não informado" value={exercise.sets.length === 0 ? exercise.pendingReps ?? '' : exercise.sets.every(set => set.reps === exercise.sets[0]?.reps) ? exercise.sets[0]?.reps || '' : ''} onChange={event => updateExercise(exercise.id, exercise.sets.length === 0 ? { pendingReps: event.target.value === '' ? undefined : Number(event.target.value) } : { sets: exercise.sets.map(set => ({ ...set, reps: Number(event.target.value) || 0 })) })} />
+                  <Field label="Carga para todas (kg)" type="number" min="0" step="0.5" placeholder="Não informada" value={exercise.sets.length === 0 ? exercise.pendingWeight ?? '' : exercise.sets.every(set => set.weight === exercise.sets[0]?.weight) ? exercise.sets[0]?.weight || '' : ''} onChange={event => updateExercise(exercise.id, exercise.sets.length === 0 ? { pendingWeight: event.target.value === '' ? undefined : Number(event.target.value) } : { sets: exercise.sets.map(set => ({ ...set, weight: Number(event.target.value) || 0 })) })} />
                 </div>
                 <details><summary className="text-sm text-ac cursor-pointer mb-3">Editar séries individualmente</summary>
                 <p className="text-sm text-mu mt-3 mb-2">Séries</p>

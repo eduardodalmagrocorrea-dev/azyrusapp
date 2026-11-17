@@ -24,9 +24,10 @@ const validate = load('src/aiProposals.ts', {}, { Date, Set }).validateProposals
 let modelCalls = 0;
 let modelStatus = 200;
 let modelUrl = '';
+let modelBody;
 const modelLogs = [];
 let modelText = JSON.stringify({ mensagem: 'Pronto', registros: [{ type: 'event', name: 'Consulta', date: '2026-12-01' }] });
-const fakeFetch = async url => { modelCalls++; modelUrl = url; return { ok: modelStatus === 200, status: modelStatus, json: async () => ({ candidates: [{ content: { parts: [{ text: modelText }] } }] }) }; };
+const fakeFetch = async (url, options) => { modelCalls++; modelUrl = url; modelBody = JSON.parse(options.body); return { ok: modelStatus === 200, status: modelStatus, json: async () => ({ candidates: [{ content: { parts: [{ text: modelText }] } }] }) }; };
 const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposals.js': { validateProposals: validate } }, { process: { env }, fetch: fakeFetch, console: { error: (...args) => modelLogs.push(args) } }).default;
 
 (async () => {
@@ -61,6 +62,13 @@ const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposal
   assert.equal(res.code, 200);
   assert.equal(res.body.registros[0].name, 'Consulta');
   assert.match(modelUrl, /\/gemini-3\.5-flash-lite:generateContent$/);
+  assert.equal(JSON.stringify(modelBody.generationConfig.responseSchema).includes('"required":["name","weight"]'), true);
+  modelText = JSON.stringify({ mensagem: 'Séries e repetições pendentes', registros: [{ type: 'workout', name: 'Pull', day: 2, exercises: [{ name: 'Remada', weight: 60 }] }] });
+  res = response();
+  await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
+  assert.equal(res.code, 200);
+  assert.equal(res.body.registros[0].exercises[0].weight, 60);
+  assert.equal(res.body.registros[0].exercises[0].count, undefined);
   modelStatus = 403;
   res = response();
   await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
@@ -78,6 +86,10 @@ const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposal
   await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
   assert.equal(res.code, 503);
   assert.throws(() => validate([{ type: 'workout', name: 'Pull', action: 'update', exerciseChange: { operation: 'add', name: 'Remada', count: 3 } }]));
+  validate([{ type: 'workout', name: 'Pull', day: 2, exercises: [{ name: 'Remada', weight: 60 }] }]);
+  validate([{ type: 'workout', name: 'Pull', action: 'update', exerciseChange: { operation: 'add', name: 'Remada', weight: 60 } }]);
+  assert.throws(() => validate([{ type: 'workout', name: 'Pull', day: 2, exercises: [{ name: 'Remada', weight: 60, count: -1 }] }]));
+  assert.throws(() => validate([{ type: 'workout', name: 'Pull', day: 2, exercises: [{ name: 'Remada' }] }]));
   let dbTouched = false;
   const sync = load('api/sync-habit-reminders.ts', { './lib/security.js': security, './lib/supabase.js': { supabase: { from() { dbTouched = true; throw new Error('unexpected db access'); } } } }).default;
   res = response();

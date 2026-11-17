@@ -81,6 +81,8 @@ export type Exercise = {
   sets: ExerciseSet[];
   rest: number;
   notes: string;
+  pendingWeight?: number;
+  pendingReps?: number;
 };
 
 export type Workout = {

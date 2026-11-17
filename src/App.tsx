@@ -41,7 +41,7 @@ import PasswordGate from './PasswordGate';
 import Assistant from './Assistant';
 import type { AITarget } from './Assistant';
 import type { Proposal } from './aiProposals';
-import { applyExerciseChange } from './aiWorkout';
+import { applyExerciseChange, makeExercise } from './aiWorkout';
 import { today, uid } from './utils';
 
 import {
@@ -229,7 +229,7 @@ export default function App() {
       if (item.type === 'habit') habitsToAdd.push({ id: uid(), name: item.name.trim(), category: item.category || 'Pessoal', days: item.days!, time: item.time || '', reminderEnabled: item.reminder, done: [], created: today() });
       if (item.type === 'event') tasksToAdd.push({ id: uid(), title: item.name.trim(), date: item.date!, time: item.time || '', priority: 1, category: item.category || 'Pessoal', done: false });
       if (item.type === 'finance') financeToAdd.push({ id: uid(), date: item.date!, type: item.direction!, description: item.name.trim(), category: item.category || 'Outro', amount: item.amount! });
-      if (item.type === 'workout') workoutsToAdd.push({ id: uid(), name: item.name.trim(), date: today(), day: item.day!, duration: 0, notes: '', completed: false, exercises: item.exercises!.map(exercise => ({ id: uid(), name: exercise.name.trim(), notes: '', rest: exercise.rest ?? 0, sets: Array.from({ length: exercise.count }, () => ({ id: uid(), reps: exercise.reps, weight: exercise.weight })) })) });
+      if (item.type === 'workout') workoutsToAdd.push({ id: uid(), name: item.name.trim(), date: today(), day: item.day!, duration: 0, notes: '', completed: false, exercises: item.exercises!.map(makeExercise) });
       if (item.type === 'goal') goalsToAdd.push({ id: uid(), title: item.name.trim(), desc: item.description || '', due: item.date || '', category: item.category || 'Pessoal', status: 'ativa', tracked: false, unit: '', start: 0, current: 0, target: 100, pct: 0 });
     }
     if (habitsToAdd.length) setHabits(list => [...list, ...habitsToAdd]);

@@ -7,6 +7,7 @@ const code = ts.transpileModule(fs.readFileSync('src/aiWorkout.ts', 'utf8'), { c
 const context = { exports: {}, require: () => ({ uid: () => String(++nextId) }) };
 vm.runInNewContext(code, context);
 const apply = context.exports.applyExerciseChange;
+const makeExercise = context.exports.makeExercise;
 const workout = { id: 'w', name: 'Pull', completed: true, exercises: [{ id: 'e', name: 'Puxada', notes: 'Preservar', rest: 60, sets: [{ id: '1', reps: 10, weight: 50 }, { id: '2', reps: 12, weight: 55 }] }] };
 const updated = apply(workout, { operation: 'update', name: 'Puxada', weight: 70 });
 assert.equal(updated.exercises[0].sets[1].reps, 12);
@@ -17,4 +18,19 @@ assert.throws(() => apply(workout, { operation: 'update', name: 'Puxada', count:
 assert.throws(() => apply({ ...workout, exercises: [workout.exercises[0], workout.exercises[0]] }, { operation: 'remove', name: 'Puxada' }));
 assert.equal(apply(workout, { operation: 'remove', name: 'Puxada' }).exercises.length, 0);
 assert.equal(apply(workout, { operation: 'add', name: 'Remada', count: 3, reps: 12, weight: 60 }).exercises.length, 2);
+const pending = makeExercise({ name: 'Remada', weight: 60 });
+assert.equal(pending.sets.length, 0);
+assert.equal(pending.pendingWeight, 60);
+assert.equal(pending.pendingReps, undefined);
+const expanded = apply({ ...workout, exercises: [pending] }, { operation: 'update', name: 'Remada', count: 3 });
+assert.equal(expanded.exercises[0].sets.length, 3);
+assert.equal(expanded.exercises[0].sets[0].weight, 60);
+assert.equal(expanded.exercises[0].sets[0].reps, 0);
+const added = apply(workout, { operation: 'add', name: 'Remada', weight: 60 });
+assert.equal(added.exercises[1].sets.length, 0);
+assert.equal(added.exercises[1].pendingWeight, 60);
+const withCount = makeExercise({ name: 'Agachamento', count: 3, weight: 0 });
+assert.equal(withCount.sets.length, 3);
+assert.equal(withCount.sets[0].weight, 0);
+assert.equal(withCount.sets[0].reps, 0);
 console.log('OK: treino, preservação, ambiguidade e dados incompletos.');

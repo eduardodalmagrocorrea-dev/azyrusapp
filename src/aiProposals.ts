@@ -20,7 +20,7 @@ export type Proposal = {
   carbs?: number;
   fat?: number;
   day?: number;
-  exercises?: { name: string; count: number; reps: number; weight: number; rest?: number }[];
+  exercises?: { name: string; count?: number; reps?: number; weight: number; rest?: number }[];
   exerciseChange?: { operation: 'add' | 'update' | 'remove'; name: string; newName?: string; count?: number; reps?: number; weight?: number; rest?: number };
 };
 const dateOk = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00Z')) && new Date(v + 'T00:00:00Z').toISOString().slice(0, 10) === v;
@@ -44,7 +44,7 @@ export function validateProposals(input: unknown): Proposal[] {
         if (e.newName !== undefined && (typeof e.newName !== 'string' || !e.newName.trim() || e.newName.length > 200)) throw new Error('Nome de exercício inválido.');
         for (const key of ['count','reps','rest']) if (e[key] !== undefined && (!Number.isInteger(e[key]) || e[key] < (key === 'rest' ? 0 : 1) || e[key] > (key === 'count' ? 30 : key === 'reps' ? 1000 : 86400))) throw new Error('Valor do exercício inválido.');
         if (e.weight !== undefined && (typeof e.weight !== 'number' || !Number.isFinite(e.weight) || e.weight < 0 || e.weight > 10000)) throw new Error('Carga inválida.');
-        if (e.operation === 'add' && (e.count === undefined || e.reps === undefined || e.weight === undefined)) throw new Error('Informe séries, repetições e carga para o novo exercício.');
+        if (e.operation === 'add' && e.weight === undefined) throw new Error('Informe a carga para o novo exercício.');
         if (e.operation === 'remove' && Object.keys(e).some(k => !['operation','name'].includes(k))) throw new Error('Remoção de exercício inválida.');
         if (e.operation === 'update' && !['newName','count','reps','weight','rest'].some(k => e[k] !== undefined)) throw new Error('Informe o que deseja alterar no exercício.');
       }
@@ -77,7 +77,7 @@ export function validateProposals(input: unknown): Proposal[] {
     if (item.type === 'workout') {
       if (!Number.isInteger(item.day) || item.day < 0 || item.day > 6 || !Array.isArray(item.exercises) || item.exercises.length < 1 || item.exercises.length > 30) throw new Error('Informe o dia e os exercicios do treino.');
       for (const exercise of item.exercises) {
-        if (!exercise || typeof exercise !== 'object' || Object.keys(exercise).some(k => !['name','count','reps','weight','rest'].includes(k)) || typeof exercise.name !== 'string' || !exercise.name.trim() || exercise.name.length > 200 || !Number.isInteger(exercise.count) || exercise.count < 1 || exercise.count > 30 || !Number.isInteger(exercise.reps) || exercise.reps < 1 || exercise.reps > 1000 || typeof exercise.weight !== 'number' || !Number.isFinite(exercise.weight) || exercise.weight < 0 || exercise.weight > 10000 || (exercise.rest !== undefined && (!Number.isInteger(exercise.rest) || exercise.rest < 0 || exercise.rest > 86400))) throw new Error('Cada exercício requer séries, repetições e carga válidas; o descanso é opcional.');
+        if (!exercise || typeof exercise !== 'object' || Object.keys(exercise).some(k => !['name','count','reps','weight','rest'].includes(k)) || typeof exercise.name !== 'string' || !exercise.name.trim() || exercise.name.length > 200 || (exercise.count !== undefined && (!Number.isInteger(exercise.count) || exercise.count < 1 || exercise.count > 30)) || (exercise.reps !== undefined && (!Number.isInteger(exercise.reps) || exercise.reps < 1 || exercise.reps > 1000)) || typeof exercise.weight !== 'number' || !Number.isFinite(exercise.weight) || exercise.weight < 0 || exercise.weight > 10000 || (exercise.rest !== undefined && (!Number.isInteger(exercise.rest) || exercise.rest < 0 || exercise.rest > 86400))) throw new Error('Informe um nome e uma carga válidos para cada exercício.');
       }
     }
     if (item.type === 'habit') {
