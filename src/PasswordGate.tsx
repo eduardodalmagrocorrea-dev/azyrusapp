@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Btn, Field } from './ui';
 
-const PASSWORD = '123456';
 
 export default function PasswordGate({
   onUnlock,
@@ -11,15 +10,18 @@ export default function PasswordGate({
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const enter = () => {
-    if (password === PASSWORD) {
-      localStorage.setItem('azyrus-authenticated', 'true');
-      onUnlock();
-      return;
-    }
-
-    setError('Senha incorreta.');
-    setPassword('');
+  const [busy, setBusy] = useState(false);
+  const enter = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+      const data = await response.json();
+      setPassword('');
+      if (response.ok && data.authenticated) onUnlock();
+      else setError(data.error || 'N?o foi poss?vel entrar.');
+    } catch { setError('Sem conex?o com o servidor.'); }
+    finally { setBusy(false); }
   };
 
   return (
@@ -54,8 +56,8 @@ export default function PasswordGate({
           </p>
         )}
 
-        <Btn className="w-full mt-4" onClick={enter}>
-          Entrar
+        <Btn className="w-full mt-4" onClick={enter} disabled={busy}>
+          {busy ? 'Entrando...' : 'Entrar'}
         </Btn>
       </div>
     </div>

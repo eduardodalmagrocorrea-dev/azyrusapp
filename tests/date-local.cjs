@@ -1,0 +1,13 @@
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const ts = require('typescript');
+process.env.TZ = 'Pacific/Kiritimati';
+const code = ts.transpileModule(fs.readFileSync('src/aiProposals.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+const context = { exports: {}, Date, Set };
+vm.runInNewContext(code, context);
+const validate = context.exports.validateProposals;
+validate([{ type: 'event', name: 'Teste', date: '2026-12-01' }]);
+validate([{ type: 'event', name: 'Teste', date: '2024-02-29' }]);
+assert.throws(() => validate([{ type: 'event', name: 'Teste', date: '2026-02-30' }]));
+console.log('OK: datas válidas e inválidas em UTC+14.');

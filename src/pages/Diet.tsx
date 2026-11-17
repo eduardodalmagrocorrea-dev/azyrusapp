@@ -11,6 +11,7 @@ const blank=():MealEntry=>({id:'',date:today(),meal:'Café da manhã',food:'',ca
 export default function Diet({meals,setMeals,water,setWater,say}:P){
   const [form,setForm]=useState<MealEntry|null>(null);
   const [waterForm,setWaterForm]=useState(false);
+  const [editingWater,setEditingWater]=useState<WaterEntry|null>(null);
   const ts=today();
   const day=meals.filter(x=>x.date===ts);
   const totals=day.reduce((a,x)=>({cal:a.cal+x.calories,p:a.p+x.protein,c:a.c+x.carbs,f:a.f+x.fat}),{cal:0,p:0,c:0,f:0});
@@ -30,6 +31,7 @@ export default function Diet({meals,setMeals,water,setWater,say}:P){
       <div className="flex items-center gap-2 mb-2"><Droplets size={18}/><p className="font-medium">Água</p><span className="ml-auto text-sm text-mu">{fmtNum(waterTotal)} ml</span></div>
       <div className="flex gap-2 flex-wrap">{[250,500,750,1000].map(n=><Btn key={n} variant="ghost" className="flex-1 min-w-[70px]" onClick={()=>addWater(n)}>+{n} ml</Btn>)}</div>
       <Btn variant="ghost" className="w-full mt-2" onClick={()=>setWaterForm(true)}>Adicionar outro volume</Btn>
+      {water.filter(x=>x.date===ts).map(x=><div key={x.id} className="flex items-center justify-between mt-2 text-sm"><span>{fmtNum(x.amount)} ml</span><button type="button" className="text-ac underline p-2" onClick={()=>setEditingWater({...x})}>Editar</button></div>)}
     </Card>
     {day.length===0?<Empty text="Nenhuma refeição registrada hoje." action={<Btn onClick={()=>setForm(blank())}>Adicionar refeição</Btn>}/>:<div className="space-y-2">{day.map(x=><Card key={x.id} className="flex items-center gap-3"><button onClick={()=>setForm(x)} className="flex-1 text-left"><p className="font-medium">{x.food}</p><p className="text-sm text-mu">{x.meal} · {fmtNum(x.calories)} kcal · P {fmtNum(x.protein)}g · C {fmtNum(x.carbs)}g · G {fmtNum(x.fat)}g</p></button><button className="size-10 grid place-items-center text-mu" onClick={()=>remove(x)} aria-label="Excluir"><Trash2 size={18}/></button></Card>)}</div>}
     {form&&<Sheet title={form.id?'Editar refeição':'Nova refeição'} onClose={()=>setForm(null)}>
@@ -40,5 +42,6 @@ export default function Diet({meals,setMeals,water,setWater,say}:P){
       {form.id&&<Btn variant="danger" className="w-full mt-3" onClick={()=>remove(form)}><Trash2 size={18}/>Excluir</Btn>}
     </Sheet>}
     {waterForm&&<Sheet title="Adicionar água" onClose={()=>setWaterForm(false)}><div className="grid grid-cols-2 gap-2">{[1500,2000,2500,3000].map(n=><Btn key={n} variant="ghost" onClick={()=>{addWater(n-waterTotal>0?n-waterTotal:500);setWaterForm(false)}}>{n} ml no total</Btn>)}</div></Sheet>}
+    {editingWater&&<Sheet title="Editar água" onClose={()=>setEditingWater(null)}><Field label="Data" type="date" value={editingWater.date} onChange={e=>setEditingWater({...editingWater,date:e.target.value})}/><Field label="Volume (ml)" type="number" min="1" value={editingWater.amount || ''} onChange={e=>setEditingWater({...editingWater,amount:Number(e.target.value)})}/><Btn className="w-full" disabled={!editingWater.date || !Number.isFinite(editingWater.amount) || editingWater.amount<=0} onClick={()=>{setWater(list=>list.map(x=>x.id===editingWater.id?editingWater:x));setEditingWater(null);say('Água atualizada')}}>Salvar</Btn><Btn variant="danger" className="w-full mt-3" onClick={()=>{if(confirm('Excluir este registro de água?')){setWater(list=>list.filter(x=>x.id!==editingWater.id));setEditingWater(null);say('Água excluída')}}}>Excluir</Btn></Sheet>}
   </>;
 }

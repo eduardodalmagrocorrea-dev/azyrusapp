@@ -3,9 +3,9 @@ let p: Promise<IDBDatabase> | undefined;
 const open = () => (p ??= new Promise<IDBDatabase>((res, rej) => {
   const r = indexedDB.open('azyrus', 1);
   r.onupgradeneeded = () => r.result.createObjectStore('kv');
-  r.onsuccess = () => res(r.result);
+  r.onsuccess = () => { r.result.onversionchange = () => { r.result.close(); p = undefined; }; res(r.result); };
   r.onerror = () => rej(r.error);
-}));
+})).catch(error => { p = undefined; throw error; });
 
 export async function dbGet<T>(k: string) {
   const d = await open();
@@ -23,5 +23,6 @@ export async function dbSet(k: string, v: unknown) {
     t.objectStore('kv').put(v, k);
     t.oncomplete = () => res();
     t.onerror = () => rej(t.error);
+    t.onabort = () => rej(t.error ?? new Error('Transação cancelada.'));
   });
 }

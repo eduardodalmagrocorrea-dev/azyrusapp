@@ -118,6 +118,12 @@ export default function Tasks({ tasks, setTasks, say }: P) {
   const [selectedDate, setSelectedDate] = useState(today());
 
   useEffect(() => {
+    const refreshNotes = () => setNotes(loadNotes());
+    window.addEventListener('azyrus-notes-changed', refreshNotes);
+    return () => window.removeEventListener('azyrus-notes-changed', refreshNotes);
+  }, []);
+
+  useEffect(() => {
     try {
       localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
     } catch {

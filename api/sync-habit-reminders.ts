@@ -1,5 +1,6 @@
 
 import { supabase } from './lib/supabase.js';
+import { sameOrigin, session } from './lib/security.js';
 
 export default async function handler(
 req: any,
@@ -7,6 +8,10 @@ res: any
 ) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
+  }
+
+  if (!sameOrigin(req) || !session(req)) {
+    return res.status(401).json({ error: 'Não autorizado' });
   }
 
   try {

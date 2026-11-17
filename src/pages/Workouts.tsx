@@ -51,7 +51,7 @@ const blankExercise = (): Exercise => ({
   id: uid(),
   name: '',
   sets: [{ id: uid(), reps: 0, weight: 0 }],
-  rest: 60,
+  rest: 0,
   notes: '',
 });
 
@@ -152,8 +152,8 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
         (_, index) =>
           exercise.sets[index] ?? {
             id: uid(),
-            reps: 0,
-            weight: 0,
+            reps: exercise.sets[0]?.reps ?? 0,
+            weight: exercise.sets[0]?.weight ?? 0,
           },
       ),
     });
@@ -275,7 +275,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                   <Pencil size={16} /> Editar
                 </Btn>
               </div>
-            </Card>
+              </Card>
           ))}
         </div>
       )}
@@ -524,21 +524,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <Sel
-                    label="Descanso"
-                    value={exercise.rest}
-                    onChange={(event) =>
-                      updateExercise(exercise.id, {
-                        rest: Number(event.target.value),
-                      })
-                    }
-                  >
-                    {[30, 60, 90, 120, 180].map((seconds) => (
-                      <option key={seconds} value={seconds}>
-                        {seconds}s
-                      </option>
-                    ))}
-                  </Sel>
+                  <Field label="Descanso (segundos)" type="number" min="0" step="1" placeholder="Não informado" value={exercise.rest || ''} onChange={event => updateExercise(exercise.id, { rest: Number(event.target.value) || 0 })} />
 
                   <Sel
                     label="Quantidade de séries"
@@ -568,6 +554,11 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                   }
                 />
 
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Repetições para todas" type="number" min="0" placeholder="Não informado" value={exercise.sets.every(set => set.reps === exercise.sets[0]?.reps) ? exercise.sets[0]?.reps || '' : ''} onChange={event => updateExercise(exercise.id, { sets: exercise.sets.map(set => ({ ...set, reps: Number(event.target.value) || 0 })) })} />
+                  <Field label="Carga para todas (kg)" type="number" min="0" step="0.5" placeholder="Não informada" value={exercise.sets.every(set => set.weight === exercise.sets[0]?.weight) ? exercise.sets[0]?.weight || '' : ''} onChange={event => updateExercise(exercise.id, { sets: exercise.sets.map(set => ({ ...set, weight: Number(event.target.value) || 0 })) })} />
+                </div>
+                <details><summary className="text-sm text-ac cursor-pointer mb-3">Editar séries individualmente</summary>
                 <p className="text-sm text-mu mt-3 mb-2">Séries</p>
 
                 <div className="space-y-2">
@@ -609,6 +600,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                     </div>
                   ))}
                 </div>
+              </details>
               </Card>
             ))}
           </div>
