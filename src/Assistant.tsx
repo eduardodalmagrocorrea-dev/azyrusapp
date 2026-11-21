@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import { Mic } from 'lucide-react';
+import { ArrowUp, LoaderCircle, Mic, Square } from 'lucide-react';
 import { Btn, Field, Sel, Sheet } from './ui';
 import { validateProposals } from './aiProposals';
 import type { Proposal } from './aiProposals';
@@ -59,21 +59,25 @@ export default function Assistant({ onClose, onConfirm, targets }: { onClose: ()
   };
   return <Sheet title="AZYRUS AI" onClose={onClose}>
     <label className="block text-sm text-mu mb-2" htmlFor="ai-command">O que deseja organizar?</label>
-    <textarea id="ai-command" className="w-full rounded-xl border border-ln bg-bg p-3 text-tx" rows={4} maxLength={4000} value={command} onChange={e => setCommand(e.target.value)} placeholder="Digite ou fale seu comando" />
-    <div className="flex gap-2 mt-3">
-      <Btn onClick={send} disabled={busy || !command.trim()} className="flex-1">{busy ? 'Processando...' : 'Interpretar'}</Btn>
-      {Speech && <Btn variant="ghost" onClick={listen} aria-label={recording ? 'Parar gravação' : 'Falar comando'}><Mic size={20} />{recording ? 'Parar' : 'Falar'}</Btn>}
+    <div className="rounded-xl border border-ln bg-bg p-2 focus-within:border-ac">
+      <textarea id="ai-command" className="block w-full resize-y rounded-lg bg-transparent p-2 text-tx" rows={3} maxLength={4000} value={command} onChange={e => setCommand(e.target.value)} placeholder="Digite seu comando" />
+      <div className="mt-2 flex items-center justify-end gap-2">
+        {busy && <span className="mr-auto text-sm text-mu" role="status">Processando…</span>}
+        {Speech && <Btn variant="ghost" onClick={listen} aria-pressed={recording} aria-label={recording ? 'Parar gravação' : 'Falar comando'}>{recording ? <Square size={16} /> : <Mic size={18} />}</Btn>}
+        <Btn onClick={send} disabled={busy || !command.trim()} aria-label="Enviar comando">{busy ? <LoaderCircle size={18} className="motion-safe:animate-spin" /> : <ArrowUp size={20} />}</Btn>
+      </div>
     </div>
     {!Speech && <p className="text-xs text-mu mt-2">Reconhecimento de voz indisponível neste navegador. Use o texto.</p>}
     {targets.some(target => target.type === 'note') && <details className="mt-4 rounded-xl border border-ln p-3"><summary className="cursor-pointer text-sm text-ac">Resumir ou organizar uma nota</summary><div className="mt-3"><Sel label="Nota" value={noteId} onChange={e => setNoteId(e.target.value)}><option value="">Selecione uma nota</option>{targets.filter(target => target.type === 'note').map(target => <option key={target.id} value={target.id}>{target.name} — {target.detail}</option>)}</Sel><p className="text-xs text-mu mb-3">O conteúdo da nota selecionada será enviado ao Gemini.</p><div className="flex gap-2"><Btn variant="ghost" className="flex-1" disabled={!noteId || busy} onClick={() => transformNote('summary')}>Resumir</Btn><Btn variant="ghost" className="flex-1" disabled={!noteId || busy} onClick={() => transformNote('organize')}>Organizar</Btn></div></div></details>}
-    {error && <p role="alert" className="text-sm text-red-400 mt-3">{error}</p>}
+    {error && <p role="alert" className="form-error mt-3 text-sm">{error}</p>}
     {result && <div className="mt-4"><p className="font-medium">Interpretação</p><p className="whitespace-pre-wrap text-sm text-mu mt-2">{result}</p></div>}
+    {draft.length > 0 && <h3 className="mt-5 font-semibold">Prévia das alterações</h3>}
     {draft.map((item, index) => {
       const change = (patch: Partial<Proposal>) => setDraft(current => current.map((p, i) => i === index ? { ...p, ...patch } : p));
       const number = (value: string) => value === '' ? undefined : Number(value);
       const normalize = (text: string) => text.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
       const matches = targets.filter(target => target.type === item.type && normalize(target.name).includes(normalize(item.name)));
-      return <div key={index} className="mt-4 rounded-xl border border-ln p-4">
+      return <div key={index} className="mt-3 rounded-xl border border-ln bg-bg/50 p-4">
         <p className="font-medium mb-3">{({ habit: 'Hábito', event: 'Evento', finance: 'Finanças', goal: 'Meta', workout: 'Treino', note: 'Nota', meal: 'Refeição', water: 'Água' })[item.type]}</p>
         {item.action === 'delete' || item.action === 'update' ? <><p className="text-sm mb-2">Selecione o registro. A alteração só ocorrerá ao confirmar.</p><Sel label="Registro" value={item.targetId || ''} onChange={e => change({ targetId: e.target.value || undefined })}><option value="">Selecione um registro</option>{matches.map(target => <option key={target.id} value={target.id}>{target.name}{target.detail ? ` — ${target.detail}` : ''}</option>)}</Sel>{matches.length === 0 && <p className="text-sm text-mu">Nenhum registro encontrado. Reformule o comando com o nome exato.</p>}{item.action === 'update' && <>
           {item.newName !== undefined && <Field label="Novo nome" value={item.newName} onChange={e => change({newName:e.target.value})} />}

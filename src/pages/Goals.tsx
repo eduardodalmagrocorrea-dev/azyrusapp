@@ -285,15 +285,7 @@ export default function Goals({ goals, setGoals, say }: P) {
             />
           )}
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: '16px',
-              width: '100%',
-              alignItems: 'start'
-            }}
-          >
+          <div className="grid grid-cols-1 min-[420px]:grid-cols-2 items-start gap-3">
             {goals.map(g => (
               <div key={g.id} style={{ minWidth: 0, width: '100%' }}>
                 <Card
@@ -306,38 +298,13 @@ export default function Goals({ goals, setGoals, say }: P) {
                       alt=""
                       style={{
                         width: '100%',
-                        height: 176,
+                        height: 112,
                         objectFit: 'cover',
                         borderRadius: 12,
                         marginBottom: 12
                       }}
                     />
-                  ) : (
-                    <div
-                      style={{
-                        width: '100%',
-                        height: 176,
-                        borderRadius: 12,
-                        marginBottom: 12,
-                        background: 'var(--sf)',
-                        border: '1px dashed var(--ln)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8,
-                        color: 'var(--mu)'
-                      }}
-                    >
-                      <ImagePlus size={30} />
-                      <span style={{ fontSize: 13, fontWeight: 500 }}>
-                        Adicione uma foto
-                      </span>
-                      <span style={{ fontSize: 11, opacity: 0.8 }}>
-                        Clique para personalizar sua meta
-                      </span>
-                    </div>
-                  )}
+                  ) : null}
 
                   <div className="flex justify-between items-start gap-2">
                     <p className="font-medium break-words">{g.title}</p>

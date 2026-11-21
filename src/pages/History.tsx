@@ -17,10 +17,10 @@ export default function History({habits,tasks,goals,workouts,meals,finance}:P){
   return <>
     <Head title="Histórico"/>
     <div className="grid grid-cols-2 gap-3">
-      <Card><p className="text-sm text-mu">Hábitos cumpridos</p><p className="text-3xl font-light mt-1">{completedHabits}</p></Card>
-      <Card><p className="text-sm text-mu">Tarefas concluídas</p><p className="text-3xl font-light mt-1">{completedTasks}</p></Card>
-      <Card><p className="text-sm text-mu">Treinos concluídos</p><p className="text-3xl font-light mt-1">{completedWorkouts}</p></Card>
-      <Card><p className="text-sm text-mu">Dias com dieta</p><p className="text-3xl font-light mt-1">{mealDays}</p></Card>
+      <Card><p className="text-sm text-mu">Hábitos cumpridos</p><p className="text-2xl font-semibold mt-1 tabular-nums">{completedHabits}</p></Card>
+      <Card><p className="text-sm text-mu">Tarefas concluídas</p><p className="text-2xl font-semibold mt-1 tabular-nums">{completedTasks}</p></Card>
+      <Card><p className="text-sm text-mu">Treinos concluídos</p><p className="text-2xl font-semibold mt-1 tabular-nums">{completedWorkouts}</p></Card>
+      <Card><p className="text-sm text-mu">Dias com dieta</p><p className="text-2xl font-semibold mt-1 tabular-nums">{mealDays}</p></Card>
     </div>
     <Card className="mt-3">
       <p className="font-medium mb-3">Finanças acumuladas</p>
@@ -30,11 +30,11 @@ export default function History({habits,tasks,goals,workouts,meals,finance}:P){
     </Card>
     <Card className="mt-3">
       <p className="font-medium mb-3">Atividade recente</p>
-      {recent.length===0?<p className="text-sm text-mu">Ainda não há atividade registrada.</p>:<div className="space-y-3">{recent.map((x,i)=><div key={i} className="flex justify-between gap-3"><div><p className="text-sm">{x.text}</p><p className="text-xs text-mu">{x.detail}</p></div><span className="text-xs text-mu">{fmtDate(x.date)}</span></div>)}</div>}
+      {recent.length===0?<p className="text-sm text-mu">Ainda não há atividade registrada.</p>:<div className="data-list">{recent.map((x,i)=><div key={i} className="data-row justify-between"><div className="min-w-0 break-words"><p className="text-sm">{x.text}</p><p className="text-xs text-mu">{x.detail}</p></div><span className="text-xs text-mu">{fmtDate(x.date)}</span></div>)}</div>}
     </Card>
     <Card className="mt-3">
       <p className="font-medium mb-2">Sequências</p>
-      <div className="space-y-2">{habits.map(h=><div key={h.id} className="flex justify-between text-sm"><span>{h.name}</span><span className="text-mu">{streaks(h).cur} dias</span></div>)}</div>
+      <div className="data-list">{habits.map(h=><div key={h.id} className="data-row justify-between text-sm"><span className="row-name">{h.name}</span><span className="row-detail">{streaks(h).cur} dias</span></div>)}</div>
     </Card>
   </>;
 }

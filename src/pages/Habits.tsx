@@ -123,8 +123,8 @@ export default function Habits({ habits, setHabits, say }: P) {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {habits.map(h => {
+          <div className="data-list">
+            {[...todayHabits, ...habits.filter(habit => !due(habit, t))].map(h => {
               const done = h.done.includes(ts);
               const isDue = due(h, t);
 
@@ -132,9 +132,7 @@ export default function Habits({ habits, setHabits, say }: P) {
                 <div
                   key={h.id}
                   className={cx(
-                    'flex items-center gap-2 min-w-0 h-10 px-2 rounded-lg',
-                    'bg-sf border border-ln',
-                    !isDue && 'opacity-50'
+                    'data-row'
                   )}
                 >
                   <button
@@ -143,32 +141,27 @@ export default function Habits({ habits, setHabits, say }: P) {
                     aria-label={`Marcar ${h.name}`}
                     aria-pressed={done}
                     className={cx(
-                      'shrink-0 w-5 h-5 rounded-[5px] border',
-                      'grid place-items-center transition-colors',
-                      done
-                        ? 'bg-ac border-ac text-on'
-                        : 'bg-bg border-ln'
+                      'size-11 shrink-0 grid place-items-center'
                     )}
                   >
-                    {done && (
-                      <Check size={14} strokeWidth={3} />
-                    )}
+                    <span className={cx('row-mark', done && 'is-complete')}>{done && <Check size={14} strokeWidth={3} />}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setSel(h.id)}
-                    className="flex-1 min-w-0 h-full text-left"
+                    className="flex-1 min-w-0 min-h-11 text-left"
                     title={`${h.name} · ${freq(h)}${h.time ? ` · ${h.time}` : ''}`}
                   >
                     <span
                       className={cx(
-                        'block text-[13px] font-medium truncate',
-                        done && 'text-mu'
+                        'block row-name',
+                        done && 'line-through text-mu'
                       )}
                     >
                       {h.name}
                     </span>
+                    <span className="row-detail">{isDue ? freq(h) : 'Fora da programação de hoje'}{h.time && ` · ${h.time}`}</span>
                   </button>
                 </div>
               );

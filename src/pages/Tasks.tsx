@@ -107,7 +107,7 @@ function loadNotes(): Note[] {
 }
 
 export default function Tasks({ tasks, setTasks, say }: P) {
-  const [tab, setTab] = useState<'notes' | 'calendar'>('notes');
+  const [tab, setTab] = useState<'notes' | 'calendar'>('calendar');
   const [notes, setNotes] = useState<Note[]>(loadNotes);
   const [search, setSearch] = useState('');
   const [editingNote, setEditingNote] = useState<Note | null>(null);
@@ -308,14 +308,12 @@ export default function Tasks({ tasks, setTasks, say }: P) {
         }
       />
 
-      <div className="grid grid-cols-2 gap-1 rounded-xl bg-sf p-1 mb-5">
+      <div className="segmented grid-cols-2 mb-5">
         <button
           type="button"
           onClick={() => setTab('notes')}
-          className={cx(
-            'rounded-lg py-2.5 text-sm font-medium transition-colors',
-            tab === 'notes' ? 'bg-bg shadow-sm text-tx' : 'text-mu'
-          )}
+          aria-pressed={tab === 'notes'}
+          className="min-h-11 rounded-lg text-sm text-mu"
         >
           Notas
         </button>
@@ -323,10 +321,8 @@ export default function Tasks({ tasks, setTasks, say }: P) {
         <button
           type="button"
           onClick={() => setTab('calendar')}
-          className={cx(
-            'rounded-lg py-2.5 text-sm font-medium transition-colors',
-            tab === 'calendar' ? 'bg-bg shadow-sm text-tx' : 'text-mu'
-          )}
+          aria-pressed={tab === 'calendar'}
+          className="min-h-11 rounded-lg text-sm text-mu"
         >
           Calendário
         </button>
@@ -390,13 +386,13 @@ export default function Tasks({ tasks, setTasks, say }: P) {
                     {group.title}
                   </h3>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="data-list">
                     {group.notes.map(note => (
                       <button
                         key={note.id}
                         type="button"
                         onClick={() => openNote(note)}
-                        className="min-w-0 text-left rounded-xl border border-ln bg-sf p-3 transition-colors hover:border-ac flex flex-col min-h-36"
+                        className="w-full min-w-0 text-left py-3 px-1 flex flex-col hover:text-ac"
                       >
                         <div className="flex items-center gap-2 mb-3 text-ac">
                           <FileText size={17} />
@@ -495,12 +491,12 @@ export default function Tasks({ tasks, setTasks, say }: P) {
                     type="button"
                     onClick={() => setSelectedDate(date)}
                     className={cx(
-                      'relative flex flex-col items-center justify-center rounded-xl min-h-10 gap-1 transition-colors',
+                      'relative flex flex-col items-center justify-center rounded-lg min-h-11 gap-1 transition-colors',
                       selected
                         ? 'bg-ac text-on font-semibold'
                         : isToday
                           ? 'border border-ac'
-                          : 'hover:bg-sf'
+                          : dayTasks.length ? 'bg-ac/10 text-ac' : 'hover:bg-sf'
                     )}
                     aria-label={`${day} de ${MONTHS[viewMonth]}, ${dayTasks.length} eventos`}
                     aria-pressed={selected}
@@ -549,9 +545,9 @@ export default function Tasks({ tasks, setTasks, say }: P) {
               }
             />
           ) : (
-            <div className="space-y-2">
+            <div className="data-list">
               {selectedTasks.map(task => (
-                <Card key={task.id} className="!p-3">
+                <Card key={task.id} className="flat-group">
                   <button
                     type="button"
                     onClick={() => setTaskForm({ ...task })}
@@ -596,7 +592,7 @@ export default function Tasks({ tasks, setTasks, say }: P) {
                     <button
                       type="button"
                       onClick={() => toggleTask(task)}
-                      className="text-xs text-mu underline px-2 py-1"
+                      className="text-xs text-mu underline px-2 min-h-11"
                     >
                       {task.done ? 'Marcar pendente' : 'Marcar concluído'}
                     </button>

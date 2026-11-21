@@ -10,11 +10,13 @@ import {
   Flame,
   History,
   Home,
-  ListChecks,
+  CalendarDays,
   Settings2,
   Target,
   Trash2,
-  Upload
+  Upload,
+  Utensils,
+  Wallet
 } from 'lucide-react';
 import type {
   FinanceTransaction,
@@ -36,6 +38,7 @@ export type NavId = Exclude<Tab, 'more'>;
 export type NavigationLayout = {
   bar: NavId[];
   settings: NavId[];
+  version?: 2;
 };
 
 type Data = {
@@ -97,7 +100,7 @@ const NAV_ITEMS: {
     id: 'tasks',
     label: 'Calendário',
     description: 'Tarefas e anotações',
-    icon: ListChecks
+    icon: CalendarDays
   },
   {
     id: 'goals',
@@ -386,9 +389,9 @@ export default function More({
 
   return (
     <>
-      <Head title="Ajustes" />
+      <Head title="Mais" />
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {navigation.settings.length > 0 && (
           <div className="space-y-3">
             {navigation.settings.map(id => {
@@ -444,6 +447,18 @@ export default function More({
           </div>
         </Card>
 
+        {([
+          { id: 'diet', label: 'Dieta', detail: 'Refeições e hidratação', Icon: Utensils },
+          { id: 'finance', label: 'Finanças', detail: 'Receitas e despesas', Icon: Wallet }
+        ] as const).map(({ id, label, detail, Icon }) => (
+          <Card key={id} onClick={() => setPage(id)}>
+            <div className="flex items-center gap-3">
+              <span className="size-11 shrink-0 rounded-xl bg-bg text-ac grid place-items-center"><Icon size={20} /></span>
+              <div><p className="font-medium">{label}</p><p className="text-sm text-mu">{detail}</p></div>
+            </div>
+          </Card>
+        ))}
+
         <Card onClick={() => setPage('history')}>
           <div className="flex items-center gap-3">
             <span className="size-11 rounded-xl bg-bg grid place-items-center">
@@ -481,7 +496,7 @@ export default function More({
             Tema
           </p>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="segmented grid-cols-2 bg-bg">
             {(['dark', 'light'] as const).map(t => (
               <button
                 key={t}
@@ -492,12 +507,7 @@ export default function More({
                     theme: t
                   })
                 }
-                className={cx(
-                  'h-11 rounded-xl text-sm',
-                  st.theme === t
-                    ? 'bg-ac text-on font-medium'
-                    : 'border border-ln text-mu'
-                )}
+                className="min-h-11 rounded-lg text-sm text-mu"
               >
                 {t === 'dark' ? 'Escuro' : 'Claro'}
               </button>

@@ -1,11 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 import { Check, X } from 'lucide-react';
 
 export const cx = (...a: (string | false | undefined)[]) => a.filter(Boolean).join(' ');
 
 export function Card({ children, className, onClick }: { children: ReactNode; className?: string; onClick?: () => void }) {
-  const c = cx('rounded-2xl bg-sf border border-ln p-4', className);
+  const c = cx('surface', className);
   return onClick
     ? <button onClick={onClick} className={cx(c, 'w-full text-left active:scale-[.99] transition-transform')}>{children}</button>
     : <div className={c}>{children}</div>;
@@ -14,39 +14,58 @@ export function Card({ children, className, onClick }: { children: ReactNode; cl
 export function Btn({ variant = 'primary', className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'ghost' | 'danger' }) {
   const v = {
     primary: 'bg-ac text-on',
-    ghost: 'border border-ln',
-    danger: 'border border-ln text-[#D64545]'
+    ghost: 'control-ghost',
+    danger: 'control-ghost text-danger'
   }[variant];
-  return <button {...p} className={cx('h-12 rounded-xl px-4 font-medium active:opacity-80 inline-flex items-center justify-center gap-2', v, className)} />;
+  return <button {...p} className={cx('control px-3 active:opacity-80 inline-flex items-center justify-center gap-2', v, className)} />;
 }
 
-const inp = 'mt-1 w-full h-12 rounded-xl bg-bg border border-ln px-3 text-tx focus:outline-2 focus:outline-ac';
+const inp = 'field mt-1';
 
-export function Field({ label, ...p }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
-  return <label className="block mb-3"><span className="text-sm text-mu">{label}</span><input {...p} className={inp} /></label>;
+export function Field({ label, className, ...p }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  return <label className="block mb-3"><span className="text-sm text-mu">{label}</span><input {...p} className={cx(inp, className)} /></label>;
 }
 
-export function Sel({ label, children, ...p }: SelectHTMLAttributes<HTMLSelectElement> & { label: string }) {
-  return <label className="block mb-3"><span className="text-sm text-mu">{label}</span><select {...p} className={inp}>{children}</select></label>;
+export function Sel({ label, children, className, ...p }: SelectHTMLAttributes<HTMLSelectElement> & { label: string }) {
+  return <label className="block mb-3"><span className="text-sm text-mu">{label}</span><select {...p} className={cx(inp, className)}>{children}</select></label>;
 }
 
 export function Head({ title, action }: { title: string; action?: ReactNode }) {
-  return <div className="flex items-center justify-between mb-5"><h1 className="text-3xl font-light tracking-tight">{title}</h1>{action}</div>;
+  return <div className="flex items-center justify-between gap-3 mb-6"><h1 className="page-title">{title}</h1>{action}</div>;
 }
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const overlay = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
-  }, [onClose]);
+    const viewport = window.visualViewport;
+    const element = overlay.current;
+    const syncViewport = () => {
+      if (!element || !viewport || viewport.scale !== 1) return;
+      element.style.top = `${viewport.offsetTop}px`;
+      element.style.height = `${viewport.height}px`;
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close.current();
+    };
+    syncViewport();
+    viewport?.addEventListener('resize', syncViewport);
+    viewport?.addEventListener('scroll', syncViewport);
+    window.addEventListener('keydown', handleKey);
+    return () => {
+      viewport?.removeEventListener('resize', syncViewport);
+      viewport?.removeEventListener('scroll', syncViewport);
+      window.removeEventListener('keydown', handleKey);
+    };
+  }, []);
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/50 flex items-end" onClick={onClose}>
+    <div ref={overlay} className="fixed inset-x-0 top-0 h-dvh z-40 bg-black/60 flex items-end sm:items-center px-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]" onClick={onClose}>
       <div role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}
-        className="sheet w-full max-w-md mx-auto bg-sf rounded-t-3xl max-h-[90dvh] overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+        className="sheet w-full max-w-lg mx-auto bg-sf rounded-t-[1.25rem] max-h-[calc(100%-env(safe-area-inset-top))] overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-medium">{title}</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
           <button onClick={onClose} aria-label="Fechar" className="size-11 -mr-2 grid place-items-center text-mu"><X size={22} /></button>
         </div>
         {children}
@@ -62,7 +81,7 @@ export function Bar({ pct }: { pct: number }) {
 }
 
 export function Empty({ text, action }: { text: string; action?: ReactNode }) {
-  return <div className="text-center text-mu py-14"><p className="mb-4">{text}</p>{action}</div>;
+  return <div className="empty-state"><p className={action ? 'mb-4' : undefined}>{text}</p>{action}</div>;
 }
 
 export function CheckBtn({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {

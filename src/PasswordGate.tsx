@@ -19,8 +19,8 @@ export default function PasswordGate({
       const data = await response.json();
       setPassword('');
       if (response.ok && data.authenticated) onUnlock();
-      else setError(data.error || 'N?o foi poss?vel entrar.');
-    } catch { setError('Sem conex?o com o servidor.'); }
+      else setError(data.error || 'Não foi possível entrar.');
+    } catch { setError('Sem conexão com o servidor.'); }
     finally { setBusy(false); }
   };
 
@@ -31,7 +31,7 @@ export default function PasswordGate({
           AZYRUS
         </p>
 
-        <h1 className="text-3xl font-light mb-2">
+        <h1 className="page-title mb-2">
           Acesso privado
         </h1>
 
@@ -51,7 +51,7 @@ export default function PasswordGate({
         />
 
         {error && (
-          <p className="text-sm text-red-400 mt-2">
+          <p className="form-error text-sm mt-2">
             {error}
           </p>
         )}

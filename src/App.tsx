@@ -1,11 +1,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Cog,
+  Asterisk,
+  CalendarDays,
+  ChevronLeft,
+  Ellipsis,
   Dumbbell,
   Flame,
   Home as HomeIcon,
-  ListChecks,
+  Sparkles,
   Target
 } from 'lucide-react';
 
@@ -53,9 +56,9 @@ const TABS: [Tab, string, typeof HomeIcon][] = [
   ['home', 'Início', HomeIcon],
   ['habits', 'Hábitos', Flame],
   ['workouts', 'Treinos', Dumbbell],
-  ['tasks', 'Calendário', ListChecks],
+  ['tasks', 'Calendário', CalendarDays],
   ['goals', 'Metas', Target],
-  ['more', 'Ajustes', Cog]
+  ['more', 'Mais', Ellipsis]
 ];
 
 const DEFAULT_NAVIGATION: NavigationLayout = {
@@ -63,10 +66,9 @@ const DEFAULT_NAVIGATION: NavigationLayout = {
     'home',
     'habits',
     'workouts',
-    'tasks',
-    'goals'
+    'tasks'
   ],
-  settings: []
+  settings: ['goals']
 };
 
 export default function App() {
@@ -79,11 +81,15 @@ export default function App() {
     }
   );
 
-  const [navigation, setNavigation] =
+  const [savedNavigation, setSavedNavigation] =
     useLocal<NavigationLayout>(
       'azyrus-navigation',
       DEFAULT_NAVIGATION
     );
+
+  const isPreviousDefault = (layout: NavigationLayout) =>
+    layout.version === undefined && layout.bar.join(',') === 'home,habits,workouts,tasks,goals' && layout.settings.length === 0;
+  const navigation = isPreviousDefault(savedNavigation) ? DEFAULT_NAVIGATION : savedNavigation;
 
   const [authenticated, setAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -118,6 +124,7 @@ export default function App() {
     useStore<FinanceTransaction[]>('finance', []);
 
   const [tab, setTab] = useState<Tab>('home');
+  const [workoutDay, setWorkoutDay] = useState<number>();
 
   const [morePage, setMorePage] =
     useState<MorePage>('more');
@@ -140,8 +147,8 @@ export default function App() {
       ?.setAttribute(
         'content',
         st.theme === 'dark'
-          ? '#0C1019'
-          : '#F4F5F9'
+          ? '#09090B'
+          : '#F5F5F7'
       );
   }, [st.theme]);
 
@@ -291,7 +298,7 @@ export default function App() {
   }
 
   if (checkingAuth) return <div className="h-dvh grid place-items-center">Verificando acesso...</div>;
-  if (authError) return <div className="h-dvh grid place-items-center px-6 text-center">N?o foi poss?vel verificar o acesso. Confira sua conex?o e recarregue a p?gina.</div>;
+  if (authError) return <div className="h-dvh grid place-items-center px-6 text-center">Não foi possível verificar o acesso. Confira sua conexão e recarregue a página.</div>;
   if (!authenticated) {
     return (
       <PasswordGate
@@ -315,8 +322,12 @@ export default function App() {
         name={st.name}
         habits={habits}
         tasks={tasks}
-        goals={goals}
-        go={setTab}
+        workouts={workouts}
+        go={(id, weekday) => {
+          setWorkoutDay(weekday);
+          setTab(id);
+          setMorePage('more');
+        }}
       />
     ) : tab === 'habits' ? (
       <Habits
@@ -328,6 +339,7 @@ export default function App() {
       <Workouts
         workouts={workouts}
         setWorkouts={setWorkouts}
+        initialDay={workoutDay}
         say={say}
       />
     ) : tab === 'tasks' ? (
@@ -395,8 +407,12 @@ export default function App() {
         say={say}
         onEnableNotifications={enableNotifications}
         navigation={navigation}
-        setNavigation={setNavigation}
+        setNavigation={update => setSavedNavigation(current => ({
+          ...(typeof update === 'function' ? update(isPreviousDefault(current) ? DEFAULT_NAVIGATION : current) : update),
+          version: 2
+        }))}
         onOpenTab={id => {
+          setWorkoutDay(undefined);
           setTab(id);
           setMorePage('more');
         }}
@@ -405,17 +421,21 @@ export default function App() {
 
   return (
     <div className="h-dvh flex flex-col">
-      <main className="flex-1 overflow-y-auto px-5 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-8">
-        <div className="mx-auto max-w-md">
+      <main key={tab + ':' + morePage} className="app-main min-h-0 flex-1 overflow-y-auto">
+        <div className="app-content" data-page={tab}>
+          <header className="app-brand">
+            <span className="wordmark"><Asterisk className="brand-symbol" size={22} strokeWidth={2.5} aria-hidden="true" />AZYRUS</span>
+            <button type="button" onClick={() => setShowAssistant(true)} className="ai-shortcut" aria-label="Abrir AZYRUS AI"><Sparkles size={16} aria-hidden="true" /> AI</button>
+          </header>
           {tab === 'more' &&
             morePage !== 'more' && (
               <button
                 onClick={() =>
                   setMorePage('more')
                 }
-                className="text-sm text-ac mb-4"
+                className="inline-flex min-h-11 items-center gap-1 text-sm text-ac mb-2"
               >
-                ← Voltar
+                <ChevronLeft size={16} aria-hidden="true" /> Mais
               </button>
             )}
 
@@ -426,9 +446,9 @@ export default function App() {
                   setTab('more');
                   setMorePage('more');
                 }}
-                className="text-sm text-ac mb-4"
+                className="inline-flex min-h-11 items-center gap-1 text-sm text-ac mb-2"
               >
-                ← Ajustes
+                <ChevronLeft size={16} aria-hidden="true" /> Mais
               </button>
             )}
 
@@ -438,13 +458,12 @@ export default function App() {
 
       {storageErrors.includes('write') ? <div role="alert" className="fixed top-0 inset-x-0 z-50 bg-red-800 text-white p-3 text-center text-sm">Não foi possível salvar os dados. Mantenha o aplicativo aberto e tente novamente. <button className="underline" onClick={() => window.dispatchEvent(new Event('azyrus-retry-save'))}>Tentar salvar</button></div> : storageErrors.includes('saving') ? <div role="status" className="fixed top-0 inset-x-0 z-50 bg-sf text-tx p-2 text-center text-sm">Salvando alterações...</div> : null}
       {showAssistant && <Assistant onClose={() => setShowAssistant(false)} onConfirm={confirmAI} targets={aiTargets} />}
-      <button type="button" onClick={() => setShowAssistant(true)} aria-label="Abrir AZYRUS AI" className="fixed right-5 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 rounded-full bg-ac text-on px-4 py-3 shadow-lg">IA</button>
       <nav
-        className="shrink-0 border-t border-ln bg-sf pb-[env(safe-area-inset-bottom)]"
+        className="app-nav shrink-0"
         aria-label="Navegação principal"
       >
         <div
-          className="mx-auto max-w-md grid h-16"
+          className="mx-auto max-w-xl grid h-15"
           style={{
             gridTemplateColumns:
               `repeat(${visibleTabs.length}, minmax(0, 1fr))`
@@ -459,29 +478,29 @@ export default function App() {
 
             const [, label, Icon] = item;
 
+            const active = tab === id || (id === 'more' && !navigation.bar.some(item => item === tab));
+
             return (
               <button
                 key={id}
                 onClick={() => {
+                  setWorkoutDay(undefined);
                   setTab(id);
-
-                  if (id !== 'more') {
-                    setMorePage('more');
-                  }
+                  setMorePage('more');
                 }}
                 aria-current={
-                  tab === id
+                  active
                     ? 'page'
                     : undefined
                 }
                 className={cx(
-                  'flex flex-col items-center justify-center gap-1 text-xs min-w-0',
-                  tab === id
+                  'flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium min-w-0',
+                  active
                     ? 'text-ac'
                     : 'text-mu'
                 )}
               >
-                <Icon size={20} />
+                <span className="nav-icon"><Icon size={19} strokeWidth={1.8} aria-hidden="true" /></span>
 
                 <span className="truncate max-w-full px-1">
                   {label}

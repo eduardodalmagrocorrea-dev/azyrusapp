@@ -1,79 +1,82 @@
-import { Flame } from 'lucide-react';
-import type { Goal, Habit, Tab, Task } from '../types';
-import { Card, Bar } from '../ui';
-import { due, fmtDate, goalPct, iso, streaks } from '../utils';
+import { CalendarDays, Check, ChevronRight, Dumbbell } from 'lucide-react';
+import type { Habit, Tab, Task, Workout } from '../types';
+import { cx } from '../ui';
+import { due, today } from '../utils';
 
-type P = { name: string; habits: Habit[]; tasks: Task[]; goals: Goal[]; go: (t: Tab) => void };
+type Props = { name: string; habits: Habit[]; tasks: Task[]; workouts: Workout[]; go: (tab: Tab, weekday?: number) => void };
 
-export default function Home({ name, habits, tasks, goals, go }: P) {
-  const t = new Date(), ts = iso(t);
-  const hd = habits.filter((h) => due(h, t));
-  const hDone = hd.filter((h) => h.done.includes(ts)).length;
-  const td = tasks.filter((x) => x.date === ts);
-  const total = hd.length + td.length;
-  const dn = hDone + td.filter((x) => x.done).length;
-  const pct = total ? Math.round((dn / total) * 100) : 0;
-  const next = tasks.filter((x) => !x.done).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).slice(0, 3);
-  const active = goals.filter((g) => g.status === 'ativa').slice(0, 3);
-  const best = habits.reduce((m, h) => Math.max(m, streaks(h).cur), 0);
-  const R = 38, C = 2 * Math.PI * R;
+const weekdays = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
 
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-3xl font-light tracking-tight">Olá, {name}.</h1>
-          <p className="text-mu capitalize mt-1">{t.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-        </div>
-        <svg width="88" height="88" viewBox="0 0 88 88" role="img" aria-label={`Progresso do dia: ${pct}%`}>
-          <circle cx="44" cy="44" r={R} fill="none" stroke="var(--ln)" strokeWidth="4" />
-          <circle cx="44" cy="44" r={R} fill="none" stroke="var(--ac)" strokeWidth="4" strokeLinecap="round"
-            strokeDasharray={`${(C * pct) / 100} ${C}`} transform="rotate(-90 44 44)" />
-          <text x="44" y="49" textAnchor="middle" fill="var(--tx)" fontSize="17">{pct}%</text>
-        </svg>
+export default function Home({ name, habits, tasks, workouts, go }: Props) {
+  const date = new Date();
+  const key = today();
+  const scheduled = habits.filter(habit => due(habit, date));
+  const done = scheduled.filter(habit => habit.done.includes(key)).length;
+  const pct = scheduled.length ? Math.round(done / scheduled.length * 100) : 0;
+  const events = tasks.filter(task => task.date === key).sort((a, b) => a.time.localeCompare(b.time));
+  const training = workouts.map(workout => {
+    const weekday = workout.day ?? new Date(workout.date + 'T12:00:00').getDay();
+    return { workout, weekday, offset: (weekday - date.getDay() + 7) % 7 };
+  }).filter(item => Number.isFinite(item.offset)).sort((a, b) => a.offset - b.offset);
+  const next = training[0];
+  const todayTraining = training.filter(item => item.offset === 0);
+
+  return <div className="dashboard">
+    <header className="mb-5 sm:mb-6">
+      <p className="text-sm text-mu first-letter:uppercase">{date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+      <h1 className="page-title mt-2">{name.trim() ? `Olá, ${name}.` : 'Seu dia'}</h1>
+    </header>
+
+    <section className="daily-progress" aria-labelledby="daily-progress-title">
+      <div className="min-w-0">
+        <h2 className="text-sm font-semibold text-mu" id="daily-progress-title">Progresso diário</h2>
+        <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{done} <span className="text-mu">/ {scheduled.length}</span></p>
+        <p className="mt-1 text-sm text-mu">Hábitos concluídos</p>
       </div>
+      <div className="progress-ring" role="progressbar" aria-label="Hábitos concluídos" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <svg viewBox="0 0 88 88" aria-hidden="true">
+          <circle cx="44" cy="44" r="37" className="ring-track" />
+          <circle cx="44" cy="44" r="37" pathLength="100" strokeDasharray={`${pct} 100`} className="ring-value" />
+        </svg>
+        <span aria-hidden="true">{pct}%</span>
+      </div>
+    </section>
 
-      <Card>
-        <div className="flex items-center justify-between mb-3">
-          <p className="font-medium">Hábitos de hoje</p>
-          <button onClick={() => go('habits')} className="text-sm text-ac">Ver todos</button>
-        </div>
-        {hd.length === 0 ? <p className="text-sm text-mu">Nenhum hábito programado para hoje.</p> :
-          <div className="space-y-2">
-            {hd.slice(0, 4).map((h) => (
-              <div key={h.id} className="flex items-center gap-3">
-                <span className={h.done.includes(ts) ? 'size-6 rounded-full bg-ac text-on grid place-items-center text-xs' : 'size-6 rounded-full border border-ln'}>{h.done.includes(ts) ? '✓' : ''}</span>
-                <span className={h.done.includes(ts) ? 'line-through text-mu' : ''}>{h.name}</span>
-              </div>
-            ))}
-          </div>
-        }
-      </Card>
-
-      <Card>
-        <div className="flex items-center justify-between">
-          <p className="font-medium">Sequência atual</p>
-          <Flame size={18} className={best ? 'text-ac' : 'text-mu'} />
-        </div>
-        <p className="text-3xl font-light mt-2">{best} <span className="text-base text-mu">dias</span></p>
-      </Card>
-
-      <Card>
-        <div className="flex items-center justify-between mb-3">
-          <p className="font-medium">Próximas tarefas</p>
-          <button onClick={() => go('tasks')} className="text-sm text-ac">Ver todas</button>
-        </div>
-        {next.length === 0 ? <p className="text-sm text-mu">Nenhuma tarefa pendente.</p> :
-          <div className="space-y-2">{next.map((x) => <div key={x.id} className="flex justify-between gap-3"><span>{x.title}</span><span className="text-sm text-mu">{fmtDate(x.date)}</span></div>)}</div>}
-      </Card>
-
-      <Card>
-        <p className="font-medium mb-3">Metas ativas</p>
-        {active.length === 0 ? <p className="text-sm text-mu">Nenhuma meta ativa.</p> :
-          <div className="space-y-4">
-            {active.map((g) => <div key={g.id}><div className="flex justify-between text-sm mb-2"><span>{g.title}</span><span className="text-mu">{Math.round(goalPct(g))}%</span></div><Bar pct={goalPct(g)} /></div>)}
-          </div>}
-      </Card>
+    <div className="dashboard-agenda">
+      <section>
+        <div className="section-heading"><h2>Hábitos de hoje</h2><button onClick={() => go('habits')}>Ver todos <ChevronRight size={15} /></button></div>
+        {!scheduled.length && <p className="section-empty">Nenhum hábito programado para hoje.</p>}
+        <ul className="data-list">
+          {scheduled.map(habit => <li className="data-row" key={habit.id}>
+            <span className={cx('row-mark', habit.done.includes(key) && 'is-complete')} aria-label={habit.done.includes(key) ? 'Concluído' : 'Pendente'}>{habit.done.includes(key) && <Check size={14} />}</span>
+            <span className="row-name">{habit.name}</span>
+            {habit.time && <time className="row-detail">{habit.time}</time>}
+          </li>)}
+        </ul>
+      </section>
+      <div className="space-y-3 sm:space-y-5">
+        <section>
+          <div className="section-heading"><h2>{todayTraining.length ? 'Treinos de hoje' : 'Próximo treino'}</h2><button onClick={() => go('workouts', next?.weekday)}>Ver treinos <ChevronRight size={15} /></button></div>
+          {!next && <p className="section-empty">Nenhum treino programado.</p>}
+          <ul className="data-list">
+            {(todayTraining.length ? todayTraining : next ? [next] : []).map(({ workout, weekday, offset }) => <li className="data-row" key={workout.id}>
+              <Dumbbell className="row-icon" size={19} />
+              <div className="min-w-0"><p className="row-name">{workout.name}</p><p className="row-detail">{offset === 0 ? 'Hoje' : weekdays[weekday]} · {workout.exercises.length} {workout.exercises.length === 1 ? 'exercício' : 'exercícios'}</p></div>
+            </li>)}
+          </ul>
+        </section>
+        <section>
+          <div className="section-heading"><h2>Compromissos de hoje</h2><button onClick={() => go('tasks')}>Calendário <ChevronRight size={15} /></button></div>
+          {!events.length && <p className="section-empty">Nenhum compromisso para hoje.</p>}
+          <ul className="data-list">
+            {events.map(event => <li className="data-row" key={event.id}>
+              <CalendarDays className="row-icon" size={18} />
+              <span className={cx('row-name', event.done && 'line-through text-mu')}>{event.title}</span>
+              {event.time && <time className="row-detail">{event.time}</time>}
+            </li>)}
+          </ul>
+        </section>
+      </div>
     </div>
-  );
+  </div>;
 }

@@ -22,6 +22,7 @@ type P = {
   workouts: Workout[];
   setWorkouts: Setter<Workout[]>;
   say: (m: string) => void;
+  initialDay?: number;
 };
 
 const days = [
@@ -55,10 +56,10 @@ const blankExercise = (): Exercise => ({
   notes: '',
 });
 
-export default function Workouts({ workouts, setWorkouts, say }: P) {
+export default function Workouts({ workouts, setWorkouts, say, initialDay }: P) {
   const [form, setForm] = useState<Workout | null>(null);
   const [viewing, setViewing] = useState<Workout | null>(null);
-  const [day, setDay] = useState(new Date().getDay());
+  const [day, setDay] = useState(initialDay ?? new Date().getDay());
   const [doneExercises, setDoneExercises] = useState<string[]>([]);
   const [doneSets, setDoneSets] = useState<string[]>([]);
   const [exerciseIndex, setExerciseIndex] = useState(0);
@@ -212,6 +213,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
         action={
           <Btn
             onClick={() => setForm({ ...blank(), day })}
+            aria-label="Novo treino"
             className="!px-0 w-12"
           >
             <Plus size={22} />
@@ -219,16 +221,14 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
         }
       />
 
-      <div className="grid grid-cols-7 gap-1.5 mb-5">
+      <div className="segmented grid-cols-7 mb-5">
         {order.map((weekday) => (
           <button
             key={weekday}
             onClick={() => setDay(weekday)}
-            className={`h-11 rounded-xl text-xs border ${
-              day === weekday
-                ? 'bg-ac text-on border-ac font-semibold'
-                : 'border-ln text-mu'
-            }`}
+            aria-pressed={day === weekday}
+            aria-label={days[weekday]}
+            className="min-h-11 min-w-0 rounded-lg text-xs text-mu"
           >
             {days[weekday].slice(0, 3)}
           </button>
@@ -247,9 +247,9 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
           }
         />
       ) : (
-        <div className="space-y-3">
+        <div className="data-list">
           {currentDay.map((workout) => (
-            <Card key={workout.id}>
+            <Card key={workout.id} className="flat-group">
               <div className="flex items-center gap-3">
                 <div className="size-11 rounded-xl bg-ac/10 grid place-items-center">
                   <Dumbbell size={21} />
@@ -262,14 +262,14 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                     {workout.duration ? ` · ${workout.duration} min` : ''}
                   </p>
                   {workout.completed && (
-                    <p className="text-xs text-green-400 mt-1">
+                    <p className="text-xs text-success mt-1">
                       Treino concluído
                     </p>
                   )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 mt-4">
+              <div className="flex flex-wrap gap-2 mt-3">
                 <Btn onClick={() => start(workout)}>
                   <Play size={16} /> Visualizar
                 </Btn>
@@ -303,7 +303,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
               return (
                 <div
                   key={exercise.id}
-                  className="overflow-hidden rounded-2xl border border-ln bg-[#101114]"
+                  className="overflow-hidden rounded-2xl border border-ln bg-bg"
                 >
                   <button
                     onClick={() => toggleExercise(exercise.id)}
@@ -341,7 +341,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                     </span>
                   </button>
 
-                  <div className="grid grid-cols-[1fr_1fr_1fr] px-4 py-2 bg-[#1d1f23] text-[10px] font-semibold tracking-widest text-gray-400">
+                  <div className="grid grid-cols-[1fr_1fr_1fr] px-4 py-2 bg-sf text-[11px] font-semibold text-mu">
                     <span>SÉRIE</span>
                     <span className="text-center">KG</span>
                     <span className="text-right">REPS</span>
@@ -356,7 +356,7 @@ export default function Workouts({ workouts, setWorkouts, say }: P) {
                       <button
                         key={set.id}
                         onClick={() => toggleSet(key)}
-                        className={`w-full grid grid-cols-[1fr_1fr_1fr] items-center px-4 py-3 text-sm text-left border-t border-[#292b30] ${
+                        className={`w-full grid grid-cols-[1fr_1fr_1fr] items-center px-4 py-3 text-sm text-left border-t border-ln ${
                           checked
                             ? 'bg-[#203128] text-green-300'
                             : setIndex % 2 === 0
