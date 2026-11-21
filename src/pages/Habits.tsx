@@ -1,9 +1,11 @@
 
 import { useState } from 'react';
 import { Check, Plus, Trash2 } from 'lucide-react';
+import { useLocal } from '../hooks';
 import type { Habit, Setter } from '../types';
 import { Btn, Empty, Field, Head, Sel, Sheet, cx } from '../ui';
 import { addDays, DOW, due, freq, iso, MILESTONES, streaks, today, uid } from '../utils';
+import HabitTimeline from './HabitTimeline';
 
 const CATS = ['Pessoal', 'Estudos', 'Saúde', 'Trabalho', 'Outro'];
 
@@ -27,6 +29,8 @@ const blank = (): Habit => ({
 export default function Habits({ habits, setHabits, say }: P) {
   const [sel, setSel] = useState<string | null>(null);
   const [form, setForm] = useState<Habit | null>(null);
+  const [view, setView] = useLocal<{ mode: 'list' | 'timeline' }>('azyrus-habits-view', { mode: 'list' });
+  const [timelineDate, setTimelineDate] = useState<string>();
 
   const t = new Date();
   const ts = today();
@@ -34,25 +38,20 @@ export default function Habits({ habits, setHabits, say }: P) {
   const todayHabits = habits.filter(h => due(h, t));
   const completed = todayHabits.filter(h => h.done.includes(ts)).length;
 
-  const toggle = (id: string) => {
+  const toggle = (id: string, date = ts) => {
     const h = habits.find(x => x.id === id);
     if (!h) return;
 
-    const on = h.done.includes(ts);
-
-    const nh = {
-      ...h,
-      done: on
-        ? h.done.filter(x => x !== ts)
-        : [...h.done, ts],
-    };
-
-    setHabits(l => l.map(x => x.id === id ? nh : x));
+    const on = h.done.includes(date);
+    setHabits(l => l.map(x => x.id !== id ? x : {
+      ...x,
+      done: x.done.includes(date) ? x.done.filter(day => day !== date) : [...x.done, date]
+    }));
 
     if (on) {
       say('Hábito desmarcado');
     } else {
-      const c = streaks(nh).cur;
+      const c = date === ts ? streaks({ ...h, done: [...h.done, date] }).cur : 0;
       say(
         MILESTONES.includes(c)
           ? `Marco de ${c} dias atingido`
@@ -103,7 +102,16 @@ export default function Habits({ habits, setHabits, say }: P) {
         }
       />
 
-      {habits.length === 0 ? (
+      <div role="group" aria-label="Visualização de hábitos" className="segmented grid-cols-2 mb-4">
+        <button type="button" aria-pressed={view.mode !== 'timeline'} onClick={() => setView({ mode: 'list' })}
+          className="min-h-11 rounded-lg text-sm text-mu">Lista</button>
+        <button type="button" aria-pressed={view.mode === 'timeline'} onClick={() => setView({ mode: 'timeline' })}
+          className="min-h-11 rounded-lg text-sm text-mu">Linha do tempo</button>
+      </div>
+
+      {view.mode === 'timeline' ? (
+        <HabitTimeline habits={habits} date={timelineDate} onDateChange={setTimelineDate} onToggle={toggle} onOpen={setSel} />
+      ) : habits.length === 0 ? (
         <Empty
           text="Nenhum hábito ainda. Comece com um só."
           action={
