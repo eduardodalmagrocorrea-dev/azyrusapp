@@ -78,7 +78,8 @@ async function checkBatch() {
   assert.match(review([{ ...items[0], name: 'Inexistente' }]).previews[0].error, /não encontrado/);
   assert.match(review([...items, items[0]]).previews.at(-1).error, /mais de uma vez/);
   assert.equal(review([...items, { ...items[5], name: 'receítas' }]).valid, false);
-  assert.equal(review([...items, { type: 'note', name: 'X', action: 'create' }]).valid, false);
+  assert.equal(review([...items, { type: 'note', name: 'X', action: 'create', description: 12 }]).valid, false);
+  assert.equal(review([{ type: 'note', name: 'Título sem conteúdo', action: 'create' }]).changes.get('note')[0].content, '');
   assert.equal(review([{ ...items[4], targetId: 'n', expectedUpdatedAt: 'stale' }]).valid, false);
 
   const subscription = { endpoint: 'https://push.example/device' };
@@ -140,8 +141,16 @@ let modelUrl = '';
 let modelBody;
 const modelLogs = [];
 let modelText = JSON.stringify({ mensagem: 'Pronto', registros: [{ type: 'event', name: 'Consulta', date: '2026-12-01' }] });
-const fakeFetch = async (url, options) => { modelCalls++; modelUrl = url; modelBody = JSON.parse(options.body); return { ok: modelStatus === 200, status: modelStatus, json: async () => ({ candidates: [{ content: { parts: [{ text: modelText }] } }] }) }; };
-const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposals.js': { validateProposals: validate } }, { process: { env }, fetch: fakeFetch, console: { error: (...args) => modelLogs.push(args) } }).default;
+let nextReplies = [];
+const fakeFetch = async (url, options) => {
+  modelCalls++;
+  modelUrl = url;
+  modelBody = JSON.parse(options.body);
+  const text = nextReplies.shift() ?? modelText;
+  return { ok: modelStatus === 200, status: modelStatus, json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }) };
+};
+const aiOutput = load('api/lib/ai-output.ts', { '../../src/aiProposals.js': { validateProposals: validate } });
+const ai = load('api/ai.ts', { './lib/security.js': security, './lib/ai-output.js': aiOutput }, { process: { env }, fetch: fakeFetch, console: { error: (...args) => modelLogs.push(args) } }).default;
 
 (async () => {
   await checkBatch();
@@ -171,18 +180,47 @@ const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposal
   await ai({ ...base, method: 'POST', body: input }, res);
   assert.equal(res.code, 401);
   assert.equal(modelCalls, 0);
+  modelText = JSON.stringify({ mensagem: 'Já salvei tudo!', registros: [{ type: 'event', action: 'create', name: 'Consulta', date: '2026-12-01' }] });
   res = response();
   await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
   assert.equal(res.code, 200);
   assert.equal(res.body.registros[0].name, 'Consulta');
+  assert.equal(res.body.mensagem, undefined);
   assert.match(modelUrl, /\/gemini-3\.5-flash-lite:generateContent$/);
   assert.equal(JSON.stringify(modelBody.generationConfig.responseSchema).includes('"required":["name","weight"]'), true);
-  modelText = JSON.stringify({ mensagem: 'Séries e repetições pendentes', registros: [{ type: 'workout', name: 'Pull', day: 2, exercises: [{ name: 'Remada', weight: 60 }] }] });
+  modelText = JSON.stringify({ registros: [{ type: 'workout', action: 'create', name: 'Pull', day: 2, exercises: [{ name: 'Remada', weight: 60 }] }] });
   res = response();
   await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
   assert.equal(res.code, 200);
   assert.equal(res.body.registros[0].exercises[0].weight, 60);
   assert.equal(res.body.registros[0].exercises[0].count, undefined);
+  const repairedFinance = { type: 'finance', action: 'create', name: 'Mercado', amount: '19,90', date: '2026-11-26', direction: 'despesa' };
+  nextReplies = ['{json inválido', '```json\n' + JSON.stringify({ registros: [repairedFinance] }) + '\n```'];
+  const callsBeforeRetry = modelCalls;
+  res = response();
+  await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
+  assert.equal(res.code, 200);
+  assert.equal(res.body.registros[0].amount, 19.9);
+  assert.equal(modelCalls, callsBeforeRetry + 2);
+  const existing = { type: 'habit', name: 'Meditação', action: 'update', category: 'Saúde' };
+  const missing = { type: 'goal', name: 'Corrida', action: 'update', date: '10/12/2026' };
+  const unsafe = { type: 'note', name: 'Compras', action: 'update', description: 1 };
+  nextReplies = [
+    JSON.stringify({ registros: [existing, missing, unsafe] }),
+    JSON.stringify({ correcoes: [
+      { indice: 0, registro: { ...existing, category: 'Outro' } },
+      { indice: 1, registro: { ...missing, date: '2026-12-10' } },
+      { indice: 2, registro: { type: 'note', name: 'Compras', action: 'delete' } },
+    ] }),
+  ];
+  res = response();
+  await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
+  assert.equal(res.code, 200);
+  assert.equal(res.body.registros.length, 2);
+  assert.equal(res.body.registros[0].category, 'Saúde');
+  assert.equal(res.body.registros[1].date, '2026-12-10');
+  assert.equal(res.body.pendencias[0].registro, 'Compras');
+  assert.throws(() => aiOutput.validateModelProposal({ ...repairedFinance, amount: '1.234' }), /valor financeiro/);
   const records = [{ type: 'habit', name: 'Meditação' }, { type: 'note', name: 'Compras' }];
   modelText = JSON.stringify({ mensagem: 'Pronto', registros: [
     { type: 'habit', name: 'Meditação', action: 'update', days: [1, 3] },
@@ -244,7 +282,7 @@ const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposal
   assert.equal(res.code, 429);
   modelStatus = 200;
   modelText = JSON.stringify({ mensagem: 'Confira.', pendencias: [{ registro: 'Treino', motivo: 'Informe o exercício.' }], registros: [
-    { type: 'event', name: 'x', date: '2026-02-30' },
+    { type: 'event', action: 'create', name: 'x', date: '2026-02-30' },
     { type: 'habit', action: 'create', name: 'Leitura', reminder: true,
       dayTimes: [{ daysText: 'segunda a sexta', time: '07:00' }, { daysText: 'fins de semana', time: '09:00' }] },
     { type: 'habit', action: 'update', name: 'Meditação',

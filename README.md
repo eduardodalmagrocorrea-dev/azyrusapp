@@ -41,8 +41,15 @@ Uma única transação do IndexedDB salva o lote confirmado. As notas existentes
 são lidas do armazenamento anterior até a primeira gravação de notas no
 IndexedDB. A cópia anterior permanece no aparelho.
 
-Os testes locais usam respostas simuladas do Gemini e do IndexedDB. A
-validação com o serviço real e no PWA do iPhone depende de um ambiente de
-teste autorizado.
+A API interpreta comandos com o Gemini 3.5 Flash-Lite. Valida cada proposta,
+normaliza formatos inequívocos e faz no máximo uma nova consulta para tentar
+corrigir a resposta. Propostas válidas permanecem na prévia e as demais
+aparecem como pendências. A confirmação de gravação vem do aplicativo depois
+que o IndexedDB conclui a transação.
+
+Os testes locais simulam o Gemini e o IndexedDB. O teste separado
+`node tests/ai-gemini-live.cjs` envia comandos fictícios ao modelo real quando
+`GEMINI_API_KEY` está disponível no ambiente do processo. Ele cobre um
+comando simples e um lote em todas as categorias, sem gravar registros.
 
 Não há login, comunidade, analytics ou servidor próprio.

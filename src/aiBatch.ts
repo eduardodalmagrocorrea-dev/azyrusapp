@@ -113,7 +113,7 @@ function createRecord(item: Proposal): RecordValue {
     case 'workout': return { id, name, date: today(), day: item.day!, duration: 0, notes: '', completed: false, exercises: item.exercises!.map(makeExercise) };
     case 'note': {
       const now = new Date().toISOString();
-      return { id, title: name, content: description!, createdAt: now, updatedAt: now };
+      return { id, title: name, content: description ?? '', createdAt: now, updatedAt: now };
     }
     case 'meal': return { id, food: name, date: date!, meal: item.meal!, calories: item.calories!, protein: item.protein!, carbs: item.carbs!, fat: item.fat! };
     case 'water': return { id, date: date!, amount: item.amount! };

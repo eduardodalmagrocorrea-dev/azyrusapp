@@ -51,9 +51,11 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
       const response = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: description, today: today(), records: catalogForCommand(targets) }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Erro ao processar comando.');
-      setResult(data.mensagem || 'Confira os dados identificados.');
       const proposals = data.registros?.length ? validateProposals(data.registros) : [];
       const pending: ProposalIssue[] = data.pendencias ?? [];
+      setResult(proposals.length || pending.length
+        ? 'Revise a prévia. A gravação ocorre após a confirmação.'
+        : 'Nenhuma alteração foi identificada. Descreva o que deseja criar, editar ou excluir.');
       if (revision === null) {
         setDraft(proposals);
         setIssues(pending);
@@ -88,7 +90,7 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
     try {
       await onConfirm(review);
       setDraft([]);
-      setResult('Alterações confirmadas.');
+      setResult(review.changes.size ? 'Alterações salvas neste aparelho.' : 'Os registros já tinham os valores da prévia.');
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Falha no salvamento. Nenhuma alteração do lote foi aplicada.');
     } finally {
@@ -172,7 +174,20 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
           {item.direction !== undefined && <Sel label="Tipo" value={item.direction} onChange={e => change({direction:e.target.value as 'receita'|'despesa'})}><option value="receita">Receita</option><option value="despesa">Despesa</option></Sel>}
           {item.meal !== undefined && <Sel label="Refeição" value={item.meal} onChange={e => change({meal:e.target.value})}>{['Café da manhã','Almoço','Lanche','Jantar','Outro'].map(x => <option key={x}>{x}</option>)}</Sel>}
           {item.day !== undefined && <Sel label="Dia do treino" value={item.day} onChange={e => change({day:Number(e.target.value)})}>{['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'].map((x,i) => <option key={x} value={i}>{x}</option>)}</Sel>}
-          {item.exerciseChange && <div className="rounded-xl bg-bg border border-ln p-3 mb-3"><p className="mb-2 font-medium">{({add:'Adicionar exercício', update:'Alterar exercício', remove:'Remover exercício'})[item.exerciseChange.operation]}</p><Field label="Exercício" value={item.exerciseChange.name} onChange={e => change({exerciseChange:{...item.exerciseChange!,name:e.target.value}})} />{item.exerciseChange.newName !== undefined && <Field label="Novo nome" value={item.exerciseChange.newName} onChange={e => change({exerciseChange:{...item.exerciseChange!,newName:e.target.value}})} />}{(['count','reps','weight','rest'] as const).map(key => (item.exerciseChange?.operation === 'add' || item.exerciseChange?.[key] !== undefined) && <Field key={key} label={({count:'Séries',reps:'Repetições',weight:'Carga (kg)',rest:'Descanso (s)'})[key]} type="number" min="0" step={key === 'weight' ? '0.5' : '1'} placeholder={key === 'weight' ? '' : 'Pendente'} value={item.exerciseChange?.[key] ?? ''} onChange={e => change({exerciseChange:{...item.exerciseChange!,[key]:number(e.target.value)}})} />)}</div>}
+          {(item.exerciseChanges ?? (item.exerciseChange ? [item.exerciseChange] : [])).map((exercise, exerciseIndex) => {
+            const update = (patch: Partial<typeof exercise>) => change(item.exerciseChanges
+              ? { exerciseChanges: item.exerciseChanges.map((entry, index) => index === exerciseIndex ? { ...entry, ...patch } : entry) }
+              : { exerciseChange: { ...exercise, ...patch } });
+            return <div key={exerciseIndex} className="rounded-xl bg-bg border border-ln p-3 mb-3">
+              <p className="mb-2 font-medium">{({add:'Adicionar exercício', update:'Alterar exercício', remove:'Remover exercício'})[exercise.operation]}</p>
+              <Field label="Exercício" value={exercise.name} onChange={e => update({ name: e.target.value })} />
+              {exercise.newName !== undefined && <Field label="Novo nome" value={exercise.newName} onChange={e => update({ newName: e.target.value })} />}
+              {(['count','reps','weight','rest'] as const).map(key => (exercise.operation === 'add' || exercise[key] !== undefined) &&
+                <Field key={key} label={({count:'Séries',reps:'Repetições',weight:'Carga (kg)',rest:'Descanso (s)'})[key]} type="number"
+                  min="0" step={key === 'weight' ? '0.5' : '1'} value={exercise[key] ?? ''}
+                  onChange={e => update({ [key]: number(e.target.value) ?? (exercise.operation === 'update' || key === 'weight' ? NaN : undefined) })} />)}
+            </div>;
+          })}
           {item.days !== undefined && <div className="flex flex-wrap gap-1 mb-3">{['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map((x,i) => <button type="button" key={x} aria-pressed={item.days!.includes(i)} className={`rounded-lg px-2 py-2 text-sm border border-ln ${item.days!.includes(i) ? 'bg-ac text-on' : ''}`} onClick={() => change({days:item.days!.includes(i) ? item.days!.filter(d => d !== i) : [...item.days!,i]})}>{x}</button>)}</div>}
           {item.reminder !== undefined && <label className="flex gap-2 mb-3"><input type="checkbox" checked={item.reminder} onChange={e => change({reminder:e.target.checked})} />Lembrete</label>}
         </>}</> : <>

@@ -101,6 +101,11 @@ export function validateProposals(input: unknown): Proposal[] {
       item.dayTimes = parseDayTimes(item.dayTimes, creating);
       if (creating && item.days === undefined) item.days = parseDays(item.dayTimes.flatMap((entry: { days: number[] }) => entry.days));
     }
+    if (item.type === 'workout' && item.action !== 'delete' && typeof item.day === 'string') {
+      const days = parseDays(item.day);
+      if (days.length !== 1) throw new Error('Informe um único dia para o treino.');
+      item.day = days[0];
+    }
     const allowed = ['type', 'name', 'action', 'targetId', 'expectedUpdatedAt', 'newName', 'date', 'time', 'days', 'dayTimes', 'reminder', 'amount', 'direction', 'category', 'description', 'day', 'exercises', 'exerciseChange', 'exerciseChanges', 'meal', 'calories', 'protein', 'carbs', 'fat'];
     if (Object.keys(item).some(key => !allowed.includes(key))) throw new Error('Campo desconhecido na interpretação.');
     if (!['habit', 'event', 'finance', 'goal', 'workout', 'note', 'meal', 'water'].includes(item.type) || typeof item.name !== 'string' || !item.name.trim() || item.name.length > 200) throw new Error('Informe um tipo válido e um nome de até 200 caracteres.');
@@ -118,14 +123,18 @@ export function validateProposals(input: unknown): Proposal[] {
         }
         item.exerciseChanges.forEach(validateExerciseChange);
       }
-      if (item.date !== undefined && !dateOk(item.date)) throw new Error('Data inválida.');
-      for (const key of ['newName','category','description']) if (item[key] !== undefined && (typeof item[key] !== 'string' || !item[key].trim() || item[key].length > (key === 'newName' ? 200 : key === 'description' && item.type === 'note' ? 12000 : 1000))) throw new Error('Texto inválido.');
-      if (item.time !== undefined && !timeOk(item.time) && !(item.type === 'habit' && item.time === '')) throw new Error('Horário inválido.');
+      if (item.date !== undefined && !dateOk(item.date) && !(item.type === 'goal' && item.date === '')) throw new Error('Data inválida.');
+      for (const key of ['newName','category','description']) {
+        if (item[key] !== undefined && (typeof item[key] !== 'string' ||
+          (key !== 'description' && !item[key].trim()) ||
+          item[key].length > (key === 'newName' ? 200 : key === 'description' && item.type === 'note' ? 12000 : 1000))) throw new Error('Texto inválido.');
+      }
+      if (item.time !== undefined && !timeOk(item.time) && item.time !== '') throw new Error('Horário inválido.');
       if (item.reminder !== undefined && typeof item.reminder !== 'boolean') throw new Error('Lembrete inválido.');
       if (item.day !== undefined && (!Number.isInteger(item.day) || item.day < 0 || item.day > 6)) throw new Error('Dia inválido.');
       if (item.direction !== undefined && !['receita','despesa'].includes(item.direction)) throw new Error('Tipo inválido.');
       if (item.meal !== undefined && !['Café da manhã','Almoço','Lanche','Jantar','Outro'].includes(item.meal)) throw new Error('Refeição inválida.');
-      for (const key of ['amount','calories','protein','carbs','fat']) if (item[key] !== undefined && (typeof item[key] !== 'number' || !Number.isFinite(item[key]) || item[key] < (key === 'amount' ? Number.MIN_VALUE : 0) || item[key] > 1000000)) throw new Error('Valor inválido.');
+      for (const key of ['amount','calories','protein','carbs','fat']) if (item[key] !== undefined && (typeof item[key] !== 'number' || !Number.isFinite(item[key]) || item[key] < (key === 'amount' ? Number.MIN_VALUE : 0) || item[key] > (item.type === 'finance' ? 1000000000 : 100000))) throw new Error('Valor inválido.');
       return item as Proposal;
     }
     if (item.action === 'delete') {
@@ -142,8 +151,7 @@ export function validateProposals(input: unknown): Proposal[] {
     if (Object.keys(item).some(key => !['type','action','name',...createFields[item.type as Proposal['type']]].includes(key))) {
       throw new Error('Campos de criação inválidos.');
     }
-    for (const key of ['category', 'description']) if (item[key] !== undefined && (typeof item[key] !== 'string' || item[key].length > 1000)) throw new Error('Texto inválido.');
-    if (item.type === 'note' && (typeof item.description !== 'string' || !item.description.trim())) throw new Error('Informe o conteúdo da nota.');
+    for (const key of ['category', 'description']) if (item[key] !== undefined && (typeof item[key] !== 'string' || item[key].length > (item.type === 'note' ? 12000 : 1000))) throw new Error('Texto inválido.');
     if (item.type === 'meal') {
       if (!dateOk(item.date) || !['Café da manhã', 'Almoço', 'Lanche', 'Jantar', 'Outro'].includes(item.meal)) throw new Error('Informe a data e a refeição.');
       for (const key of ['calories', 'protein', 'carbs', 'fat']) if (typeof item[key] !== 'number' || !Number.isFinite(item[key]) || item[key] < 0 || item[key] > 100000) throw new Error('Informe calorias e macronutrientes, usando zero somente quando conhecido.');
