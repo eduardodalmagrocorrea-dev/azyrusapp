@@ -4,7 +4,7 @@ import { Check, Plus, Trash2 } from 'lucide-react';
 import { useLocal } from '../hooks';
 import type { Habit, Setter } from '../types';
 import { Btn, Empty, Field, Head, Sel, Sheet, cx } from '../ui';
-import { addDays, DOW, due, freq, iso, MILESTONES, streaks, today, uid } from '../utils';
+import { addDays, DOW, due, freq, habitTime, iso, MILESTONES, streaks, today, uid, validHabitTime } from '../utils';
 import HabitTimeline from './HabitTimeline';
 
 const CATS = ['Pessoal', 'Estudos', 'Saúde', 'Trabalho', 'Outro'];
@@ -62,6 +62,10 @@ export default function Habits({ habits, setHabits, say }: P) {
 
   const save = () => {
     if (!form || !form.name.trim() || form.days.length === 0) return;
+    if (form.reminderEnabled && form.days.some(day => !validHabitTime(habitTime(form, day)))) {
+      say('Informe um horário para cada dia ativo do lembrete.');
+      return;
+    }
 
     const h = {
       ...form,
@@ -159,7 +163,7 @@ export default function Habits({ habits, setHabits, say }: P) {
                     type="button"
                     onClick={() => setSel(h.id)}
                     className="flex-1 min-w-0 min-h-11 text-left"
-                    title={`${h.name} · ${freq(h)}${h.time ? ` · ${h.time}` : ''}`}
+                    title={`${h.name} · ${freq(h)}${isDue && habitTime(h, t.getDay()) ? ` · ${habitTime(h, t.getDay())}` : ''}`}
                   >
                     <span
                       className={cx(
@@ -169,7 +173,7 @@ export default function Habits({ habits, setHabits, say }: P) {
                     >
                       {h.name}
                     </span>
-                    <span className="row-detail">{isDue ? freq(h) : 'Fora da programação de hoje'}{h.time && ` · ${h.time}`}</span>
+                    <span className="row-detail">{isDue ? freq(h) : 'Fora da programação de hoje'}{isDue && habitTime(h, t.getDay()) && ` · ${habitTime(h, t.getDay())}`}</span>
                   </button>
                 </div>
               );
@@ -203,7 +207,7 @@ export default function Habits({ habits, setHabits, say }: P) {
 
             <p className="text-sm text-mu mb-2">
               {freq(cur)}
-              {cur.time && ` · ${cur.time}`}
+              {due(cur, t) && habitTime(cur, t.getDay()) && ` · ${habitTime(cur, t.getDay())}`}
             </p>
 
             <p className="text-mu mb-4">
@@ -319,13 +323,28 @@ export default function Habits({ habits, setHabits, say }: P) {
           </div>
 
           <Field
-            label="Horário"
+            label="Horário padrão"
             type="time"
             value={form.time}
             onChange={e =>
               setForm({ ...form, time: e.target.value })
             }
           />
+
+          <details className="mb-3 rounded-xl border border-ln p-3">
+            <summary className="cursor-pointer text-sm">Horários por dia</summary>
+            <p className="my-2 text-xs text-mu">Campos vazios usam o horário padrão.</p>
+            <div className="grid grid-cols-2 gap-x-3">
+              {form.days.map(day => <Field key={day} label={DOW[day]} type="time"
+                value={form.dayTimes?.[day] ?? ''}
+                onChange={e => {
+                  const dayTimes = { ...form.dayTimes };
+                  if (e.target.value) dayTimes[day] = e.target.value;
+                  else delete dayTimes[day];
+                  setForm({ ...form, dayTimes });
+                }} />)}
+            </div>
+          </details>
 
           <label className="flex items-center gap-3 py-3 text-sm cursor-pointer">
             <input

@@ -4,10 +4,11 @@ import { Btn, Field, Sel, Sheet } from './ui';
 import { validateProposals } from './aiProposals';
 import type { Proposal } from './aiProposals';
 import { catalogForCommand, categoryLabels, deletionDetails, describeRecord, matchingTargets, reviewBatch, type AICollections, type AIReview, type AITarget } from './aiBatch';
-import { today } from './utils';
+import { DOW, today } from './utils';
 
 type SpeechInstance = { lang: string; onresult: ((event: any) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void };
 type SpeechWindow = Window & { SpeechRecognition?: new () => SpeechInstance; webkitSpeechRecognition?: new () => SpeechInstance };
+type ProposalIssue = { registro: string; motivo: string };
 export default function Assistant({ onClose, onConfirm, targets, collections }: {
   onClose: () => void;
   onConfirm: (review: AIReview) => Promise<void>;
@@ -17,6 +18,8 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
   const [command, setCommand] = useState('');
   const [result, setResult] = useState('');
   const [draft, setDraft] = useState<Proposal[]>([]);
+  const [issues, setIssues] = useState<ProposalIssue[]>([]);
+  const [revision, setRevision] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -40,19 +43,32 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
   };
   const send = async () => {
     if (busy || committing.current || !command.trim()) return;
-    setBusy(true); setError(''); setResult(''); setDraft([]);
+    setBusy(true); setError('');
+    if (revision === null) { setResult(''); setDraft([]); setIssues([]); }
     try {
-      const response = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, today: today(), records: catalogForCommand(targets) }) });
+      const description = revision === null ? command
+        : `Revise apenas a alteração pendente para “${issues[revision].registro}”. Correção: ${command}`;
+      const response = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: description, today: today(), records: catalogForCommand(targets) }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Erro ao processar comando.');
       setResult(data.mensagem || 'Confira os dados identificados.');
-      if (data.registros?.length) setDraft(validateProposals(data.registros));
+      const proposals = data.registros?.length ? validateProposals(data.registros) : [];
+      const pending: ProposalIssue[] = data.pendencias ?? [];
+      if (revision === null) {
+        setDraft(proposals);
+        setIssues(pending);
+      } else if (proposals.length || pending.length) {
+        if (draft.length + issues.length - 1 + proposals.length + pending.length > 100) throw new Error('O lote aceita até 100 alterações e pendências.');
+        setDraft([...draft, ...proposals]);
+        setIssues(issues.flatMap((issue, index) => index === revision ? pending : [issue]));
+        setRevision(null);
+      }
     } catch (e) { setError(e instanceof Error ? e.message : 'Erro de conexão.'); }
     finally { setBusy(false); }
   };
   const transformNote = async (mode: 'summary' | 'organize') => {
     if (busy || committing.current || !noteId) return;
-    setBusy(true); setError(''); setResult(''); setDraft([]);
+    setBusy(true); setError(''); setResult(''); setDraft([]); setIssues([]); setRevision(null);
     try {
       const selected = collections.note.find(note => note.id === noteId);
       if (!selected) throw new Error('Nota não encontrada.');
@@ -65,7 +81,7 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
     finally { setBusy(false); }
   };
   const confirm = async () => {
-    if (committing.current || !review.valid) return;
+    if (committing.current || busy || issues.length || !review.valid) return;
     committing.current = true;
     setSaving(true);
     setError('');
@@ -82,9 +98,9 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
   };
 
   return <Sheet title="AZYRUS AI" onClose={() => { if (!committing.current) onClose(); }}>
-    <label className="block text-sm text-mu mb-2" htmlFor="ai-command">O que deseja organizar?</label>
+    <label className="block text-sm text-mu mb-2" htmlFor="ai-command">{revision === null ? 'O que deseja organizar?' : `Descreva apenas a correção para ${issues[revision].registro}`}</label>
     <div className="rounded-xl border border-ln bg-bg p-2 focus-within:border-ac">
-      <textarea id="ai-command" className="block w-full resize-y rounded-lg bg-transparent p-2 text-tx" rows={3} maxLength={4000} value={command} onChange={e => setCommand(e.target.value)} placeholder="Digite seu comando" />
+      <textarea id="ai-command" className="block w-full resize-y rounded-lg bg-transparent p-2 text-tx" rows={3} maxLength={revision === null ? 4000 : 3700} value={command} onChange={e => setCommand(e.target.value)} placeholder="Digite seu comando" />
       <div className="mt-2 flex items-center justify-end gap-2">
         {busy && <span className="mr-auto text-sm text-mu" role="status">Processando…</span>}
         {Speech && <Btn variant="ghost" onClick={listen} aria-pressed={recording} aria-label={recording ? 'Parar gravação' : 'Falar comando'}>{recording ? <Square size={16} /> : <Mic size={18} />}</Btn>}
@@ -96,6 +112,24 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
     {targets.some(target => target.type === 'note') && <details className="mt-4 rounded-xl border border-ln p-3"><summary className="cursor-pointer text-sm text-ac">Resumir ou organizar uma nota</summary><div className="mt-3"><Sel label="Nota" value={noteId} onChange={e => setNoteId(e.target.value)}><option value="">Selecione uma nota</option>{targets.filter(target => target.type === 'note').map(target => <option key={target.id} value={target.id}>{target.name} — {target.detail}</option>)}</Sel><p className="text-xs text-mu mb-3">O conteúdo da nota selecionada será enviado ao Gemini.</p><div className="flex gap-2"><Btn variant="ghost" className="flex-1" disabled={saving || !noteId || busy} onClick={() => transformNote('summary')}>Resumir</Btn><Btn variant="ghost" className="flex-1" disabled={saving || !noteId || busy} onClick={() => transformNote('organize')}>Organizar</Btn></div></div></details>}
     {error && <p role="alert" className="form-error mt-3 text-sm">{error}</p>}
     {result && <div className="mt-4"><p className="font-medium">Interpretação</p><p className="whitespace-pre-wrap text-sm text-mu mt-2">{result}</p></div>}
+    {issues.length > 0 && <section className="mt-4 space-y-2" aria-label="Pendências">
+      {issues.map((issue, index) => <div key={index} className="rounded-xl border border-ln p-3">
+        <p className="font-medium">{issue.registro}</p>
+        <p className="text-sm text-mu">{issue.motivo}</p>
+        <div className="mt-2 flex gap-2">
+          <Btn variant="ghost" disabled={busy || revision === index} onClick={() => {
+            setRevision(index);
+            setCommand('');
+            document.getElementById('ai-command')?.focus();
+          }}>Revisar</Btn>
+          <Btn variant="ghost" disabled={busy} onClick={() => {
+            setIssues(current => current.filter((_, position) => position !== index));
+            if (revision === index) { setRevision(null); setCommand(''); }
+            else if (revision !== null && revision > index) setRevision(revision - 1);
+          }}>Remover pendência</Btn>
+        </div>
+      </div>)}
+    </section>}
     {draft.length > 0 && <h3 className="mt-5 font-semibold">Prévia das alterações</h3>}
     {draft.map((item, index) => {
       const change = (patch: Partial<Proposal>) => setDraft(current => current.map((p, i) => i === index ? { ...p, ...patch } : p));
@@ -109,7 +143,7 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
         : {};
       const next: Record<string, string | number> = preview.after ? describeRecord(preview.after) : {};
       const fields = Object.keys(preview.after ? next : current).filter(key => !editing || current[key] !== next[key]);
-      return <fieldset disabled={saving} key={index} className="mt-3 min-w-0 rounded-xl border border-ln bg-bg/50 p-4">
+      return <fieldset disabled={saving || busy} key={index} className="mt-3 min-w-0 rounded-xl border border-ln bg-bg/50 p-4">
         <p className="font-medium mb-3">{deleting ? 'Excluir' : editing ? 'Editar' : 'Criar'} · {categoryLabels[item.type]} · {item.name}</p>
         {preview.error && <p role="alert" className="form-error mb-3 text-sm">{preview.error}</p>}
         {fields.length > 0 && <div className="mb-4 space-y-2 text-sm">
@@ -131,7 +165,7 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
           {editing && <>
           {item.newName !== undefined && <Field label="Novo nome" value={item.newName} onChange={e => change({newName:e.target.value})} />}
           {item.date !== undefined && <Field label="Nova data" type="date" value={item.date} onChange={e => change({date:e.target.value})} />}
-          {item.time !== undefined && <Field label="Novo horário" type="time" value={item.time} onChange={e => change({time:e.target.value})} />}
+          {(item.time !== undefined || item.type === 'habit') && <Field label={item.type === 'habit' ? 'Horário padrão' : 'Novo horário'} type="time" value={item.time ?? (preview.before && 'days' in preview.before ? preview.before.time : '')} onChange={e => change({time:e.target.value})} />}
           {item.category !== undefined && <Field label="Nova categoria" value={item.category} onChange={e => change({category:e.target.value})} />}
           {item.description !== undefined && <label className="block mb-3 text-sm text-mu">Novo texto<textarea className="mt-1 w-full rounded-xl bg-bg border border-ln p-3 text-tx" rows={5} value={item.description} onChange={e => change({description:e.target.value})} /></label>}
           {(['amount','calories','protein','carbs','fat'] as const).map(key => item[key] !== undefined && <Field key={key} label={({amount:item.type === 'water' ? 'Volume (ml)' : 'Valor',calories:'Calorias',protein:'Proteína',carbs:'Carboidratos',fat:'Gorduras'})[key]} type="number" min="0" step="0.01" value={item[key]} onChange={e => change({[key]:number(e.target.value) ?? NaN})} />)}
@@ -145,7 +179,7 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
         <Field label="Nome" value={item.name} onChange={e => change({ name: e.target.value })} />
         {['event', 'finance', 'goal', 'meal', 'water'].includes(item.type) && <Field label="Data" type="date" value={item.date || ''} onChange={e => change({ date: e.target.value })} />}
         {item.type === 'water' && <Field label="Volume (ml)" type="number" min="1" value={item.amount ?? ''} onChange={e => change({ amount: number(e.target.value) })} />}
-        {['event', 'habit'].includes(item.type) && <Field label="Horário" type="time" value={item.time || ''} onChange={e => change({ time: e.target.value })} />}
+        {['event', 'habit'].includes(item.type) && <Field label={item.type === 'habit' ? 'Horário padrão' : 'Horário'} type="time" value={item.time || ''} onChange={e => change({ time: e.target.value })} />}
         {['habit', 'event', 'finance', 'goal'].includes(item.type) && <Field label="Categoria" value={item.category || ''} onChange={e => change({ category: e.target.value })} />}
         {['goal', 'note'].includes(item.type) && <Field label={item.type === 'note' ? 'Conteúdo' : 'Descrição'} value={item.description || ''} onChange={e => change({ description: e.target.value })} />}
         {item.type === 'meal' && <><Sel label="Refeição" value={item.meal || ''} onChange={e => change({ meal: e.target.value })}>{['Café da manhã', 'Almoço', 'Lanche', 'Jantar', 'Outro'].map(x => <option key={x}>{x}</option>)}</Sel><div className="grid grid-cols-2 gap-2">{([['calories','Calorias (kcal)'],['protein','Proteína (g)'],['carbs','Carboidratos (g)'],['fat','Gordura (g)']] as const).map(([key, label]) => <Field key={key} label={label} type="number" min="0" step="0.1" value={item[key] ?? ''} onChange={e => change({ [key]: number(e.target.value) })} />)}</div></>}
@@ -156,12 +190,31 @@ export default function Assistant({ onClose, onConfirm, targets, collections }: 
           return <div key={exerciseIndex} className="rounded-xl bg-bg border border-ln p-3 mb-3"><Field label="Exercício" value={exercise.name} onChange={e => update({ name: e.target.value })} /><div className="grid grid-cols-2 gap-2"><Field label="Séries" type="number" min="1" placeholder="Pendente" value={exercise.count ?? ''} onChange={e => update({ count: number(e.target.value) })} /><Field label="Repetições" type="number" min="1" placeholder="Pendente" value={exercise.reps ?? ''} onChange={e => update({ reps: number(e.target.value) })} /><Field label="Carga (kg)" type="number" min="0" step="0.5" value={Number.isNaN(exercise.weight) ? '' : exercise.weight} onChange={e => update({ weight: e.target.value === '' ? NaN : Number(e.target.value) })} /><Field label="Descanso (s)" type="number" min="0" placeholder="Pendente" value={exercise.rest ?? ''} onChange={e => update({ rest: number(e.target.value) })} /></div></div>;
         })}</>}
         </>}
+        {item.type === 'habit' && !deleting && <details className="mb-3 rounded-xl border border-ln p-3">
+          <summary className="cursor-pointer text-sm">Horários por dia na proposta</summary>
+          {DOW.map((day, weekday) => {
+            const slot = item.dayTimes?.find(entry => entry.days.includes(weekday));
+            const setSlot = (time: string | null | undefined) => {
+              const others = (item.dayTimes ?? []).map(entry => ({ ...entry, days: entry.days.filter(value => value !== weekday) })).filter(entry => entry.days.length);
+              if (time !== undefined) others.push({ days: [weekday], time });
+              // Coalesce equal times so a full week always fits the allowed number of slots.
+              const groups = new Map<string | null, number[]>();
+              for (const entry of others) groups.set(entry.time, [...(groups.get(entry.time) ?? []), ...entry.days]);
+              change({ dayTimes: groups.size ? Array.from(groups, ([time, days]) => ({ time, days })) : undefined });
+            };
+            return <div key={day} className="mt-2">
+              <Field label={slot?.time === null ? `${day} · usar padrão` : day} type="time" value={slot?.time ?? ''} onChange={e => setSlot(e.target.value || undefined)} />
+              {editing && <button type="button" className="mr-3 text-xs text-ac" onClick={() => setSlot(null)}>Usar padrão</button>}
+              {slot && <button type="button" className="text-xs text-mu underline" onClick={() => setSlot(undefined)}>Remover horário da proposta</button>}
+            </div>;
+          })}
+        </details>}
         <button type="button" className="text-sm text-mu underline" onClick={() => setDraft(current => current.filter((_, i) => i !== index))}>Remover da prévia</button>
       </fieldset>;
     })}
     {draft.length > 0 && <div className="flex gap-2 mt-4">
-      <Btn className="flex-1" disabled={saving || !review.valid} onClick={confirm}>{saving ? 'Salvando…' : `Confirmar todas (${draft.length})`}</Btn>
-      <Btn variant="ghost" disabled={saving} onClick={() => { setDraft([]); setError(''); setResult('Alterações canceladas.'); }}>Cancelar</Btn>
+      <Btn className="flex-1" disabled={saving || busy || !!issues.length || !review.valid} onClick={confirm}>{saving ? 'Salvando…' : `Confirmar todas (${draft.length})`}</Btn>
+      <Btn variant="ghost" disabled={saving || busy} onClick={() => { setDraft([]); setIssues([]); setRevision(null); setError(''); setResult('Alterações canceladas.'); }}>Cancelar</Btn>
     </div>}
   </Sheet>;
 }

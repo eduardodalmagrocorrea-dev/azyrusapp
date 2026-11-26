@@ -9,6 +9,7 @@ export type Proposal = {
   date?: string;
   time?: string;
   days?: number[];
+  dayTimes?: { days: number[]; time: string | null }[];
   reminder?: boolean;
   amount?: number;
   direction?: 'receita' | 'despesa';
@@ -27,6 +28,7 @@ export type Proposal = {
 type ExerciseChange = { operation: 'add' | 'update' | 'remove'; name: string; newName?: string; count?: number; reps?: number; weight?: number; rest?: number };
 
 const dateOk = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00Z')) && new Date(v + 'T00:00:00Z').toISOString().slice(0, 10) === v;
+const timeOk = (value: unknown): value is string => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 
 const weekdays = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
 const abbreviations = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
@@ -62,6 +64,25 @@ function parseDays(input: unknown): number[] {
   return [...new Set(values.flatMap(parse))].sort((a, b) => a - b);
 }
 
+function parseDayTimes(input: unknown, creating: boolean): NonNullable<Proposal['dayTimes']> {
+  if (!Array.isArray(input) || !input.length || input.length > 7) throw new Error('Informe de um a sete horários por dia.');
+  const seen = new Set<number>();
+  return input.map(entry => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+      Object.keys(entry).some(key => !['days', 'daysText', 'time'].includes(key)) ||
+      (entry.days !== undefined && entry.daysText !== undefined) ||
+      (!timeOk(entry.time) && (creating || entry.time !== null))) {
+      throw new Error('Informe os dias e um horário válido (HH:MM) para cada faixa.');
+    }
+    const days = parseDays(entry.daysText ?? entry.days);
+    for (const day of days) {
+      if (seen.has(day)) throw new Error('Há mais de um horário proposto para o mesmo dia.');
+      seen.add(day);
+    }
+    return { days, time: entry.time };
+  });
+}
+
 export function validateProposals(input: unknown): Proposal[] {
   if (!Array.isArray(input) || !input.length || input.length > 100) throw new Error('A interpretação precisa conter entre 1 e 100 registros.');
   return input.map((raw: any) => {
@@ -75,12 +96,17 @@ export function validateProposals(input: unknown): Proposal[] {
       }
       item.days = days;
     }
-    const allowed = ['type', 'name', 'action', 'targetId', 'expectedUpdatedAt', 'newName', 'date', 'time', 'days', 'reminder', 'amount', 'direction', 'category', 'description', 'day', 'exercises', 'exerciseChange', 'exerciseChanges', 'meal', 'calories', 'protein', 'carbs', 'fat'];
+    if (item.type === 'habit' && item.action !== 'delete' && item.dayTimes !== undefined) {
+      const creating = item.action !== 'update';
+      item.dayTimes = parseDayTimes(item.dayTimes, creating);
+      if (creating && item.days === undefined) item.days = parseDays(item.dayTimes.flatMap((entry: { days: number[] }) => entry.days));
+    }
+    const allowed = ['type', 'name', 'action', 'targetId', 'expectedUpdatedAt', 'newName', 'date', 'time', 'days', 'dayTimes', 'reminder', 'amount', 'direction', 'category', 'description', 'day', 'exercises', 'exerciseChange', 'exerciseChanges', 'meal', 'calories', 'protein', 'carbs', 'fat'];
     if (Object.keys(item).some(key => !allowed.includes(key))) throw new Error('Campo desconhecido na interpretação.');
     if (!['habit', 'event', 'finance', 'goal', 'workout', 'note', 'meal', 'water'].includes(item.type) || typeof item.name !== 'string' || !item.name.trim() || item.name.length > 200) throw new Error('Informe um tipo válido e um nome de até 200 caracteres.');
     if (item.action !== undefined && !['create', 'delete', 'update'].includes(item.action)) throw new Error('Operação inválida.');
     if (item.action === 'update') {
-      const fields: Record<string, string[]> = { habit: ['newName','category','time','days','reminder'], event: ['newName','category','date','time'], finance: ['newName','category','date','amount','direction'], goal: ['newName','category','date','description'], workout: ['newName','day','exerciseChange','exerciseChanges'], note: ['newName','description'], meal: ['newName','date','meal','calories','protein','carbs','fat'], water: ['date','amount'] };
+      const fields: Record<string, string[]> = { habit: ['newName','category','time','days','dayTimes','reminder'], event: ['newName','category','date','time'], finance: ['newName','category','date','amount','direction'], goal: ['newName','category','date','description'], workout: ['newName','day','exerciseChange','exerciseChanges'], note: ['newName','description'], meal: ['newName','date','meal','calories','protein','carbs','fat'], water: ['date','amount'] };
       const changed = Object.keys(item).filter(key => item[key] !== undefined && !['type','name','action','targetId','expectedUpdatedAt'].includes(key));
       if (!changed.length || changed.some(key => !fields[item.type].includes(key))) throw new Error('Campos de edição inválidos.');
       if (item.targetId !== undefined && (typeof item.targetId !== 'string' || !item.targetId || item.targetId.length > 200)) throw new Error('Registro selecionado inválido.');
@@ -94,7 +120,7 @@ export function validateProposals(input: unknown): Proposal[] {
       }
       if (item.date !== undefined && !dateOk(item.date)) throw new Error('Data inválida.');
       for (const key of ['newName','category','description']) if (item[key] !== undefined && (typeof item[key] !== 'string' || !item[key].trim() || item[key].length > (key === 'newName' ? 200 : key === 'description' && item.type === 'note' ? 12000 : 1000))) throw new Error('Texto inválido.');
-      if (item.time !== undefined && (typeof item.time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(item.time))) throw new Error('Horário inválido.');
+      if (item.time !== undefined && !timeOk(item.time) && !(item.type === 'habit' && item.time === '')) throw new Error('Horário inválido.');
       if (item.reminder !== undefined && typeof item.reminder !== 'boolean') throw new Error('Lembrete inválido.');
       if (item.day !== undefined && (!Number.isInteger(item.day) || item.day < 0 || item.day > 6)) throw new Error('Dia inválido.');
       if (item.direction !== undefined && !['receita','despesa'].includes(item.direction)) throw new Error('Tipo inválido.');
@@ -108,7 +134,7 @@ export function validateProposals(input: unknown): Proposal[] {
       return item as Proposal;
     }
     const createFields: Record<Proposal['type'], string[]> = {
-      habit: ['category','time','days','reminder'], event: ['category','date','time'],
+      habit: ['category','time','days','dayTimes','reminder'], event: ['category','date','time'],
       finance: ['category','date','amount','direction'], goal: ['category','date','description'],
       workout: ['day','exercises'], note: ['description'],
       meal: ['date','meal','calories','protein','carbs','fat'], water: ['date','amount'],
@@ -133,7 +159,7 @@ export function validateProposals(input: unknown): Proposal[] {
     }
     if (item.type === 'habit') {
       if (item.days === undefined) throw new Error(daysError);
-      if (typeof item.reminder !== 'boolean' || (item.reminder && !item.time)) throw new Error('Informe se há lembrete e o horário correspondente.');
+      if (typeof item.reminder !== 'boolean') throw new Error('Informe se o hábito deve ter lembrete.');
     }
     if ((item.type === 'event' || item.type === 'finance') && !dateOk(item.date)) throw new Error('Informe uma data válida para o evento ou lançamento.');
     if (item.type === 'finance' && (!['receita','despesa'].includes(item.direction) || typeof item.amount !== 'number' || !Number.isFinite(item.amount) || item.amount <= 0 || item.amount > 1000000000)) throw new Error('Informe o tipo e um valor financeiro positivo.');

@@ -1,7 +1,7 @@
 import { validateProposals, type Proposal } from './aiProposals';
 import { applyExerciseChange, makeExercise } from './aiWorkout';
 import type { FinanceTransaction, Goal, Habit, MealEntry, Note, Task, WaterEntry, Workout } from './types';
-import { DOW, today, uid } from './utils';
+import { DOW, habitTime, today, uid, validHabitTime } from './utils';
 
 export type AIRecords = {
   habit: Habit;
@@ -68,7 +68,15 @@ export function matchingTargets(item: Proposal, targets: AITarget[]) {
 
 export function describeRecord(record: RecordValue): { Nome: string } & Record<string, string | number> {
   const Nome = nameOf(record);
-  if ('days' in record) return { Nome, Categoria: record.category, Horário: record.time, Dias: [...record.days].sort().map(day => DOW[day]).join(', '), Lembrete: record.reminderEnabled ? 'Ativo' : 'Desativado' };
+  if ('days' in record) {
+    const days = [...record.days].sort();
+    return {
+      Nome, Categoria: record.category, 'Horário padrão': record.time,
+      Dias: days.map(day => DOW[day]).join(', '),
+      'Horários por dia': days.filter(day => record.dayTimes?.[day] !== undefined).map(day => `${DOW[day]} · ${habitTime(record, day)}`).join('\n'),
+      Lembrete: record.reminderEnabled ? 'Ativo' : 'Desativado',
+    };
+  }
   if ('priority' in record) return { Nome, Data: record.date, Horário: record.time, Categoria: record.category };
   if ('description' in record) return { Nome, Data: record.date, Tipo: record.type, Categoria: record.category, 'Valor (R$)': record.amount };
   if ('due' in record) return { Nome, Prazo: record.due, Categoria: record.category, Descrição: record.desc };
@@ -98,7 +106,7 @@ function createRecord(item: Proposal): RecordValue {
   const name = item.name.trim();
   const { category, description, date, time } = item;
   switch (item.type) {
-    case 'habit': return { id, name, category: category || 'Pessoal', time: time || '', days: item.days!, reminderEnabled: item.reminder, done: [], created: today() };
+    case 'habit': return applyHabitSchedule(item, { id, name, category: category || 'Pessoal', time: '', days: [], done: [], created: today() });
     case 'event': return { id, title: name, date: date!, time: time || '', priority: 1, category: category || 'Pessoal', done: false };
     case 'finance': return { id, description: name, date: date!, type: item.direction!, category: category || 'Outro', amount: item.amount! };
     case 'goal': return { id, title: name, desc: description || '', due: date || '', category: category || 'Pessoal', status: 'ativa', tracked: false, unit: '', start: 0, current: 0, target: 100, pct: 0 };
@@ -112,15 +120,36 @@ function createRecord(item: Proposal): RecordValue {
   }
 }
 
+function applyHabitSchedule(item: Proposal, habit: Habit): Habit {
+  const updated = { ...habit, time: item.time ?? habit.time, days: item.days ?? habit.days, reminderEnabled: item.reminder ?? habit.reminderEnabled };
+  if (item.dayTimes) {
+    const dayTimes = { ...habit.dayTimes };
+    const days = new Set(updated.days);
+    for (const slot of item.dayTimes) {
+      for (const day of slot.days) {
+        if (slot.time === null) {
+          delete dayTimes[day];
+          continue;
+        }
+        if (item.days && !days.has(day)) throw new Error(`O horário de ${DOW[day]} precisa de um dia ativo no hábito.`);
+        days.add(day);
+        dayTimes[day] = slot.time;
+      }
+    }
+    updated.days = [...days].sort();
+    updated.dayTimes = dayTimes;
+  }
+  if (updated.reminderEnabled && (!updated.days.length || updated.days.some(day => !validHabitTime(habitTime(updated, day))))) {
+    throw new Error('Informe um horário para cada dia ativo do lembrete.');
+  }
+  return updated;
+}
+
 function updateRecord(item: Proposal, record: RecordValue): RecordValue {
   const name = item.newName?.trim();
   const { date, time, category, description } = item;
   if ('days' in record) {
-    const updated = { ...record, name: name ?? record.name, category: category ?? record.category, time: time ?? record.time, days: item.days ?? record.days, reminderEnabled: item.reminder ?? record.reminderEnabled };
-    if (updated.reminderEnabled && (!updated.days.length || !/^([01]\d|2[0-3]):[0-5]\d$/.test(updated.time))) {
-      throw new Error('Informe dias e um horário válido para o lembrete.');
-    }
-    return updated;
+    return applyHabitSchedule(item, { ...record, name: name ?? record.name, category: category ?? record.category });
   }
   if ('priority' in record) return { ...record, title: name ?? record.title, date: date ?? record.date, time: time ?? record.time, category: category ?? record.category };
   if ('description' in record) return { ...record, description: name ?? record.description, date: date ?? record.date, category: category ?? record.category, amount: item.amount ?? record.amount, type: item.direction ?? record.type };

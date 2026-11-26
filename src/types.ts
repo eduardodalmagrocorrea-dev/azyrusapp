@@ -24,6 +24,7 @@ export type Habit = {
   category: string;
   days: number[];
   time: string;
+  dayTimes?: Partial<Record<number, string>>;
   reminderEnabled?: boolean;
   done: string[];
   created: string;

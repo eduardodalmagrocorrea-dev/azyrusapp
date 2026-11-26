@@ -19,6 +19,9 @@ export const addDays = (d: Date, n: number) => {
 export const parse = (s: string) => new Date(s + 'T12:00:00');
 export const due = (h: Habit, d: Date) => h.days.includes(d.getDay());
 
+export const habitTime = (habit: Habit, day: number) => habit.dayTimes?.[day] ?? habit.time;
+export const validHabitTime = (time: string) => /^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(time);
+
 export const freq = (h: Habit) =>
   h.days.length === 7 ? 'Todos os dias' :
   h.days.length === 0 ? 'Sem dias' :

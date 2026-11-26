@@ -1,7 +1,7 @@
 import { CalendarDays, Check, ChevronRight, Dumbbell } from 'lucide-react';
 import type { Habit, Tab, Task, Workout } from '../types';
 import { cx } from '../ui';
-import { due, today } from '../utils';
+import { due, habitTime, today } from '../utils';
 
 type Props = { name: string; habits: Habit[]; tasks: Task[]; workouts: Workout[]; go: (tab: Tab, weekday?: number) => void };
 
@@ -50,7 +50,7 @@ export default function Home({ name, habits, tasks, workouts, go }: Props) {
           {scheduled.map(habit => <li className="data-row" key={habit.id}>
             <span className={cx('row-mark', habit.done.includes(key) && 'is-complete')} aria-label={habit.done.includes(key) ? 'Concluído' : 'Pendente'}>{habit.done.includes(key) && <Check size={14} />}</span>
             <span className="row-name">{habit.name}</span>
-            {habit.time && <time className="row-detail">{habit.time}</time>}
+            {habitTime(habit, date.getDay()) && <time className="row-detail">{habitTime(habit, date.getDay())}</time>}
           </li>)}
         </ul>
       </section>

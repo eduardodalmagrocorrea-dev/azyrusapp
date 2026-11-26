@@ -10,7 +10,7 @@ function load(path, dependencies, globals = {}) {
   const context = { exports: {}, require: name => {
     if (!(name in dependencies)) throw new Error(`Unexpected dependency: ${name}`);
     return dependencies[name];
-  }, Buffer, URL, AbortSignal, console, ...globals };
+  }, Buffer, URL, AbortSignal, Error, console, ...globals };
   vm.runInNewContext(code, context, { filename: path });
   return context.exports;
 }
@@ -83,7 +83,7 @@ async function checkBatch() {
 
   const subscription = { endpoint: 'https://push.example/device' };
   const calls = [];
-  const { syncHabitReminders } = load('src/notifications.ts', {}, {
+  const { syncHabitReminders } = load('src/notifications.ts', { './utils': utils }, {
     navigator: { serviceWorker: { ready: Promise.resolve({
       pushManager: { getSubscription: async () => subscription },
     }) } },
@@ -115,6 +115,24 @@ async function checkBatch() {
   assert.equal(mixed.changes.get('habit')[0].reminderEnabled, true);
   assert.equal(mixed.changes.get('habit')[1].days.join(), '0,1,2,3,4,5,6');
   assert.equal(mixed.changes.get('finance').length, 0);
+  const weekly = review([{ type: 'habit', action: 'update', name: 'Meditação', dayTimes: [
+    { daysText: 'segunda', time: '06:30' }, { daysText: 'sábado', time: '09:00' },
+  ] }]);
+  assert.equal(weekly.valid, true);
+  const h = weekly.changes.get('habit')[0];
+  assert.equal(h.id, 'h');
+  assert.equal(h.done, collections.habit[0].done);
+  assert.equal(h.created, collections.habit[0].created);
+  assert.equal(utils.habitTime(h, 1), '06:30');
+  assert.equal(utils.habitTime(h, 6), '09:00');
+  assert.equal(utils.habitTime(collections.habit[0], 1), '07:00');
+  await syncHabitReminders([h]);
+  assert.deepEqual(calls[2].body.reminders.map(({ time, days }) => [time, days]), [['06:30', [1]], ['09:00', [6]]]);
+  assert.equal(calls[2].body.reminders[1].scheduleDay, 6);
+  const data = { ...collections, habit: [h] };
+  const revert = review([{ type: 'habit', action: 'update', name: 'Meditação', dayTimes: [{ days: [6], time: null }] }], data);
+  assert.equal(utils.habitTime(revert.changes.get('habit')[0], 6), '07:00');
+  assert.equal(utils.habitTime(revert.changes.get('habit')[0], 1), '06:30');
 }
 let modelCalls = 0;
 let modelStatus = 200;
@@ -225,17 +243,28 @@ const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposal
   await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
   assert.equal(res.code, 429);
   modelStatus = 200;
-  modelText = JSON.stringify({ mensagem: 'ok', registros: [{ type: 'event', name: 'x', date: '2026-02-30' }] });
+  modelText = JSON.stringify({ mensagem: 'Confira.', pendencias: [{ registro: 'Treino', motivo: 'Informe o exercício.' }], registros: [
+    { type: 'event', name: 'x', date: '2026-02-30' },
+    { type: 'habit', action: 'create', name: 'Leitura', reminder: true,
+      dayTimes: [{ daysText: 'segunda a sexta', time: '07:00' }, { daysText: 'fins de semana', time: '09:00' }] },
+    { type: 'habit', action: 'update', name: 'Meditação',
+      dayTimes: [{ days: [2], time: '08:00' }, { days: [2], time: '09:00' }] },
+  ] });
   res = response();
   await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: input }, res);
-  assert.equal(res.code, 503);
+  assert.equal(res.code, 200);
+  assert.equal(res.body.registros.length, 1);
+  assert.equal(res.body.registros[0].days.join(), '0,1,2,3,4,5,6');
+  assert.equal(res.body.pendencias.length, 3);
+  assert.match(res.body.pendencias[2].motivo, /mais de um horário/);
   assert.throws(() => validate([{ type: 'workout', name: 'Pull', action: 'update', exerciseChange: { operation: 'add', name: 'Remada', count: 3 } }]));
   validate([{ type: 'workout', name: 'Pull', day: 2, exercises: [{ name: 'Remada', weight: 60 }] }]);
   validate([{ type: 'workout', name: 'Pull', action: 'update', exerciseChange: { operation: 'add', name: 'Remada', weight: 60 } }]);
   assert.throws(() => validate([{ type: 'workout', name: 'Pull', day: 2, exercises: [{ name: 'Remada', weight: 60, count: -1 }] }]));
   assert.throws(() => validate([{ type: 'workout', name: 'Pull', day: 2, exercises: [{ name: 'Remada' }] }]));
   let dbTouched = false;
-  const sync = load('api/sync-habit-reminders.ts', { './lib/security.js': security, './lib/supabase.js': { supabase: { from() { dbTouched = true; throw new Error('unexpected db access'); } } } }).default;
+  const scheduler = load('api/lib/reminder-schedule.ts', {});
+  const sync = load('api/sync-habit-reminders.ts', { './lib/security.js': security, './lib/reminder-schedule.js': scheduler, './lib/supabase.js': { supabase: { from() { dbTouched = true; throw new Error('unexpected db access'); } } } }).default;
   res = response();
   await sync({ ...base, method: 'POST', body: {} }, res);
   assert.equal(res.code, 401);
@@ -247,5 +276,78 @@ const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposal
   res = response();
   await sync({ method: 'POST', headers: { ...base.headers, cookie }, body: {} }, res);
   assert.equal(res.code, 400);
+  const baseSlot = { habitId: 'habit1', habitName: 'Leitura', days: [1, 3], time: '07:00' };
+  const saturday = { ...baseSlot, days: [6], time: '09:00', scheduleDay: 6 };
+  const [, slot] = scheduler.parseReminderSchedule([baseSlot, saturday]);
+  assert.equal(scheduler.reminderHabitId(slot.id), 'habit1');
+  assert.throws(() => scheduler.parseReminderSchedule([saturday]), /horário principal/);
+  assert.throws(() => scheduler.parseReminderSchedule([baseSlot, { ...saturday, days: [3], scheduleDay: 3 }]), /mesmo dia/);
+  const syncWrites = [];
+  const weeklySync = load('api/sync-habit-reminders.ts', {
+    './lib/security.js': security,
+    './lib/reminder-schedule.js': scheduler,
+    './lib/supabase.js': { supabase: { from(table) {
+      if (table === 'push_subscriptions') return { select: () => ({
+        eq: () => ({ maybeSingle: async () => ({ data: { endpoint: 'device' } }) }),
+      }) };
+      return {
+        select: () => ({ eq: () => ({ eq: async () => ({ data: [{ habit_id: 'habit1' }, { habit_id: 'obsolete' }] }) }) }),
+        upsert: async (rows, options) => { syncWrites.push({ rows, options }); return {}; },
+        update: () => ({ eq: () => ({ in: async (column, values) => { syncWrites.push({ column, values }); return {}; } }) }),
+      };
+    } } },
+  }).default;
+  res = response();
+  await weeklySync({ method: 'POST', headers: { ...base.headers, cookie }, body: { subscription: { endpoint: 'device' }, reminders: [baseSlot, saturday] } }, res);
+  assert.equal(res.code, 200);
+  assert.equal(syncWrites[0].options.onConflict, 'endpoint,habit_id');
+  assert.equal(syncWrites[0].rows[0].habit_id, 'habit1');
+  assert.equal(syncWrites[0].rows[1].habit_id, slot.id);
+  assert.equal(syncWrites[0].rows[1].reminder_time, '09:00');
+  assert.equal('last_sent_date' in syncWrites[0].rows[0], false);
+  assert.equal(syncWrites[1].values.join(), 'obsolete');
+  const rows = [
+    { endpoint: 'device', habit_id: 'habit1', habit_name: 'Leitura', days: [1, 3], reminder_time: '07:00:00', timezone: 'America/Sao_Paulo' },
+    { endpoint: 'device', habit_id: slot.id, habit_name: 'Leitura', days: [6], reminder_time: '09:00:00', timezone: 'America/Sao_Paulo' },
+  ];
+  let lastSent;
+  let sends = 0;
+  let now = '2026-11-28T12:00:00Z';
+  class Clock extends Date { constructor() { super(now); } }
+  const sender = load('api/send-habit-reminders.ts', {
+    'web-push': { default: { setVapidDetails() {}, async sendNotification() { sends++; } } },
+    './lib/reminder-schedule.js': scheduler,
+    './lib/supabase.js': { supabase: { from(table) {
+      if (table === 'push_subscriptions') return { select: () => ({
+        eq: () => ({ maybeSingle: async () => ({ data: { subscription: { endpoint: 'device' } } }) }),
+      }) };
+      return {
+        select: () => ({ eq: async () => ({ data: rows }) }),
+        update(patch) {
+          return {
+            eq: function (column, value) { if (column === 'habit_id') assert.equal(value, 'habit1'); return this; },
+            or() { return this; },
+            select() { return this; },
+            async maybeSingle() {
+              if (lastSent === patch.last_sent_date) return { data: null };
+              lastSent = patch.last_sent_date;
+              return { data: { habit_id: 'habit1' } };
+            },
+          };
+        },
+      };
+    } } },
+  }, { Date: Clock, process: { env: { CRON_SECRET: 'test', VAPID_SUBJECT: 'test', VAPID_PUBLIC_KEY: 'test', VAPID_PRIVATE_KEY: 'test' } } }).default;
+  const runSend = async () => {
+    const out = response();
+    await sender({ method: 'POST', headers: { authorization: 'Bearer test' } }, out);
+    assert.equal(out.code, 200);
+    return out.body.sent;
+  };
+  assert.equal(await runSend(), 1);
+  assert.equal(await runSend(), 0);
+  now = '2026-11-30T10:00:00Z';
+  assert.equal(await runSend(), 1);
+  assert.equal(sends, 2);
   console.log('OK: auth, cookie, origem, limite, autorização da IA e validação de respostas (serviços simulados).');
 })().catch(error => { console.error(error); process.exitCode = 1; });

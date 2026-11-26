@@ -1,6 +1,7 @@
 
 import webpush from 'web-push';
 import { supabase } from './lib/supabase.js';
+import { reminderHabitId } from './lib/reminder-schedule.js';
 
 function getLocalTime(timezone: string) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -106,14 +107,14 @@ export default async function handler(req: any, res: any) {
           continue;
         }
 
-        // Reserva o envio para evitar duplicações.
+        // Todos os horários do hábito compartilham a reserva diária da linha principal.
         const { data: claimed, error: claimError } = await supabase
           .from('habit_reminders')
           .update({
             last_sent_date: local.date,
           })
           .eq('endpoint', reminder.endpoint)
-          .eq('habit_id', reminder.habit_id)
+          .eq('habit_id', reminderHabitId(reminder.habit_id))
           .eq('enabled', true)
           .or(
             `last_sent_date.is.null,last_sent_date.neq.${local.date}`
@@ -171,7 +172,7 @@ export default async function handler(req: any, res: any) {
           .from('habit_reminders')
           .update({ last_sent_date: null })
           .eq('endpoint', reminder.endpoint)
-          .eq('habit_id', reminder.habit_id)
+          .eq('habit_id', reminderHabitId(reminder.habit_id))
           .eq(
             'last_sent_date',
             getLocalTime(reminder.timezone).date

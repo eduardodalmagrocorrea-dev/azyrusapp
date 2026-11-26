@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Habit } from '../types';
 import { Bar, CheckBtn, cx } from '../ui';
-import { addDays, due, iso, parse } from '../utils';
+import { addDays, due, habitTime, iso, parse, validHabitTime } from '../utils';
 
 const periods = [
   { label: 'Manhã', start: 0, end: 12 * 60 },
@@ -14,7 +14,7 @@ const calendarDate = new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: '
 const shortDate = new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'long' });
 
 function timeInMinutes(time: string) {
-  if (!/^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+  if (!validHabitTime(time)) return null;
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + minutes;
 }
@@ -45,7 +45,10 @@ export default function HabitTimeline({ habits, date, onDateChange, onToggle, on
   const currentMinute = now.getHours() * 60 + now.getMinutes();
   const entries = habits
     .filter(habit => due(habit, day) && (!habit.created || habit.created <= selected))
-    .map(habit => ({ habit, done: habit.done.includes(selected), minute: timeInMinutes(habit.time) }));
+    .map(habit => {
+      const time = habitTime(habit, day.getDay());
+      return { habit, time, done: habit.done.includes(selected), minute: timeInMinutes(time) };
+    });
   const timed = entries
     .flatMap(entry => entry.minute === null ? [] : [{ ...entry, minute: entry.minute }])
     .sort((a, b) => a.minute - b.minute);
@@ -95,7 +98,7 @@ export default function HabitTimeline({ habits, date, onDateChange, onToggle, on
       <section key={group.label} className="pt-1">
         <h2 className="mb-2 text-xs font-semibold tracking-wide text-mu uppercase">{group.label}</h2>
         <ul className={cx('relative', group.timed && 'before:absolute before:inset-y-3 before:left-[3.625rem] before:w-px before:bg-ln')}>
-          {group.entries.map(({ habit, done, minute }) => {
+          {group.entries.map(({ habit, time, done, minute }) => {
             const upcoming = habit.id === next?.habit.id;
             const overdue = !done && minute !== null && (selected < today || (selected === today && minute < currentMinute));
             const status = done ? 'Concluído' : upcoming ? 'Próximo' : overdue ? 'Atrasado' : 'Pendente';
@@ -106,7 +109,7 @@ export default function HabitTimeline({ habits, date, onDateChange, onToggle, on
               upcoming && 'bg-ac/10'
             )}>
               {group.timed && <>
-                <time className="pl-1 text-xs text-mu tabular-nums">{habit.time}</time>
+                <time className="pl-1 text-xs text-mu tabular-nums">{time}</time>
                 <span aria-hidden="true" className={cx(
                   'z-10 size-2 justify-self-center rounded-full border',
                   done || upcoming ? 'border-ac bg-ac' : overdue ? 'border-danger bg-bg' : 'border-mu bg-bg'
