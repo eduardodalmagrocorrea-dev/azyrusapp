@@ -20,6 +20,7 @@ import type {
   MealEntry,
   MorePage,
   FinanceTransaction,
+  Note,
   Settings,
   Tab,
   Task,
@@ -42,10 +43,9 @@ import Finance from './pages/Finance';
 import History from './pages/History';
 import PasswordGate from './PasswordGate';
 import Assistant from './Assistant';
-import type { AITarget } from './Assistant';
-import type { Proposal } from './aiProposals';
-import { applyExerciseChange, makeExercise } from './aiWorkout';
-import { today, uid } from './utils';
+import { listTargets, type AICollections, type AIReview } from './aiBatch';
+import { dbCommitBatch } from './db';
+import { loadPreviousNotes } from './notes';
 
 import {
   subscribeToPush,
@@ -102,26 +102,29 @@ export default function App() {
       .catch(() => setAuthError(true)).finally(() => setCheckingAuth(false));
   }, []);
 
-  const [habits, setHabits, r1, e1] =
+  const [habits, setHabits, r1, e1, habitStore] =
     useStore<Habit[]>('habits', []);
 
-  const [tasks, setTasks, r2, e2] =
+  const [tasks, setTasks, r2, e2, taskStore] =
     useStore<Task[]>('tasks', []);
 
-  const [goals, setGoals, r3, e3] =
+  const [goals, setGoals, r3, e3, goalStore] =
     useStore<Goal[]>('goals', []);
 
-  const [workouts, setWorkouts, r4, e4] =
+  const [workouts, setWorkouts, r4, e4, workoutStore] =
     useStore<Workout[]>('workouts', []);
 
-  const [meals, setMeals, r5, e5] =
+  const [meals, setMeals, r5, e5, mealStore] =
     useStore<MealEntry[]>('meals', []);
 
-  const [water, setWater, r6, e6] =
+  const [water, setWater, r6, e6, waterStore] =
     useStore<WaterEntry[]>('water', []);
 
-  const [finance, setFinance, r7, e7] =
+  const [finance, setFinance, r7, e7, financeStore] =
     useStore<FinanceTransaction[]>('finance', []);
+
+  const [notes, setNotes, notesReady, notesError, noteStore] =
+    useStore<Note[]>('notes', [], loadPreviousNotes);
 
   const [tab, setTab] = useState<Tab>('home');
   const [workoutDay, setWorkoutDay] = useState<number>();
@@ -165,102 +168,30 @@ export default function App() {
     });
   }, [habits, r1, authenticated, st.onboarded]);
 
-  const confirmAI = (items: Proposal[]) => {
-    if (items.some(item => item.action === 'update')) {
-      if (items.length !== 1) throw new Error('Confirme uma edição por vez.');
-      const item = items[0];
-      const normalize = (text: string) => text.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-      const target = aiTargets.find(x => x.type === item.type && x.id === item.targetId && normalize(x.name).includes(normalize(item.name)));
-      if (!target) throw new Error('Registro não encontrado. Atualize a prévia.');
-      if (item.type === 'habit') {
-        const old = habits.find(x => x.id === target.id)!;
-        const updated = { ...old, name: item.newName ?? old.name, category: item.category ?? old.category, time: item.time ?? old.time, days: item.days ?? old.days, reminderEnabled: item.reminder ?? old.reminderEnabled };
-        if (updated.reminderEnabled && !updated.time) throw new Error('Informe um horário para ativar o lembrete.');
-        setHabits(list => list.map(x => x.id === target.id ? updated : x));
-      }
-      if (item.type === 'event') setTasks(list => list.map(x => x.id === target.id ? { ...x, title: item.newName ?? x.title, date: item.date ?? x.date, time: item.time ?? x.time, category: item.category ?? x.category } : x));
-      if (item.type === 'finance') setFinance(list => list.map(x => x.id === target.id ? { ...x, description: item.newName ?? x.description, date: item.date ?? x.date, category: item.category ?? x.category, amount: item.amount ?? x.amount, type: item.direction ?? x.type } : x));
-      if (item.type === 'goal') setGoals(list => list.map(x => x.id === target.id ? { ...x, title: item.newName ?? x.title, desc: item.description ?? x.desc, due: item.date ?? x.due, category: item.category ?? x.category } : x));
-      if (item.type === 'workout') {
-        const old = workouts.find(x => x.id === target.id);
-        if (!old) throw new Error('Treino não encontrado.');
-        const updated = item.exerciseChange ? applyExerciseChange(old, item.exerciseChange) : old;
-        setWorkouts(list => list.map(x => x.id === target.id ? { ...updated, name: item.newName ?? updated.name, day: item.day ?? updated.day } : x));
-      }
-      if (item.type === 'meal') setMeals(list => list.map(x => x.id === target.id ? { ...x, food: item.newName ?? x.food, date: item.date ?? x.date, meal: item.meal ?? x.meal, calories: item.calories ?? x.calories, protein: item.protein ?? x.protein, carbs: item.carbs ?? x.carbs, fat: item.fat ?? x.fat } : x));
-      if (item.type === 'water') setWater(list => list.map(x => x.id === target.id ? { ...x, date: item.date ?? x.date, amount: item.amount ?? x.amount } : x));
-      if (item.type === 'note') {
-        const notes: unknown = JSON.parse(localStorage.getItem('azyrus-notes-v1') || '[]');
-        if (!Array.isArray(notes) || !notes.some(note => note?.id === target.id && note?.title === target.name && (item.expectedUpdatedAt === undefined || note.updatedAt === item.expectedUpdatedAt))) throw new Error('A nota mudou. Atualize a prévia.');
-        localStorage.setItem('azyrus-notes-v1', JSON.stringify(notes.map(note => note?.id === target.id ? { ...note, title: item.newName ?? note.title, content: item.description ?? note.content, updatedAt: new Date().toISOString() } : note)));
-        window.dispatchEvent(new Event('azyrus-notes-changed'));
-      }
-      say('Registro atualizado.');
-      return;
-    }
-    const deletions = items.filter(item => item.action === 'delete');
-    if (deletions.length) {
-      if (items.length !== 1) throw new Error('Confirme uma exclusão por vez.');
-      const item = deletions[0];
-      const normalize = (text: string) => text.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-      const target = aiTargets.find(x => x.type === item.type && x.id === item.targetId && normalize(x.name).includes(normalize(item.name)));
-      if (!target) throw new Error('Registro não encontrado. Atualize a prévia.');
-      if (item.type === 'note') {
-        const notes: unknown = JSON.parse(localStorage.getItem('azyrus-notes-v1') || '[]');
-        if (!Array.isArray(notes) || !notes.some(note => note?.id === target.id && note?.title === target.name)) throw new Error('A nota mudou. Atualize a prévia.');
-        localStorage.setItem('azyrus-notes-v1', JSON.stringify(notes.filter(note => note?.id !== target.id)));
-        window.dispatchEvent(new Event('azyrus-notes-changed'));
-      }
-      if (item.type === 'habit') setHabits(list => list.filter(x => x.id !== target.id));
-      if (item.type === 'event') setTasks(list => list.filter(x => x.id !== target.id));
-      if (item.type === 'finance') setFinance(list => list.filter(x => x.id !== target.id));
-      if (item.type === 'goal') setGoals(list => list.filter(x => x.id !== target.id));
-      if (item.type === 'workout') setWorkouts(list => list.filter(x => x.id !== target.id));
-      if (item.type === 'meal') setMeals(list => list.filter(x => x.id !== target.id));
-      if (item.type === 'water') setWater(list => list.filter(x => x.id !== target.id));
-      say('Registro excluído.');
-      return;
-    }
-    const noteItems = items.filter(item => item.type === 'note');
-    if (noteItems.length) {
-      const raw = localStorage.getItem('azyrus-notes-v1');
-      const notes: unknown = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(notes)) throw new Error('Não foi possível ler as notas existentes.');
-      const now = new Date().toISOString();
-      const added = noteItems.map(item => ({ id: uid(), title: item.name.trim(), content: item.description!, createdAt: now, updatedAt: now }));
-      localStorage.setItem('azyrus-notes-v1', JSON.stringify([...added, ...notes]));
-      window.dispatchEvent(new Event('azyrus-notes-changed'));
-    }
-    const habitsToAdd: Habit[] = [], tasksToAdd: Task[] = [], financeToAdd: FinanceTransaction[] = [], goalsToAdd: Goal[] = [], workoutsToAdd: Workout[] = [];
-    for (const item of items) {
-      if (item.type === 'habit') habitsToAdd.push({ id: uid(), name: item.name.trim(), category: item.category || 'Pessoal', days: item.days!, time: item.time || '', reminderEnabled: item.reminder, done: [], created: today() });
-      if (item.type === 'event') tasksToAdd.push({ id: uid(), title: item.name.trim(), date: item.date!, time: item.time || '', priority: 1, category: item.category || 'Pessoal', done: false });
-      if (item.type === 'finance') financeToAdd.push({ id: uid(), date: item.date!, type: item.direction!, description: item.name.trim(), category: item.category || 'Outro', amount: item.amount! });
-      if (item.type === 'workout') workoutsToAdd.push({ id: uid(), name: item.name.trim(), date: today(), day: item.day!, duration: 0, notes: '', completed: false, exercises: item.exercises!.map(makeExercise) });
-      if (item.type === 'goal') goalsToAdd.push({ id: uid(), title: item.name.trim(), desc: item.description || '', due: item.date || '', category: item.category || 'Pessoal', status: 'ativa', tracked: false, unit: '', start: 0, current: 0, target: 100, pct: 0 });
-    }
-    if (habitsToAdd.length) setHabits(list => [...list, ...habitsToAdd]);
-    if (tasksToAdd.length) setTasks(list => [...list, ...tasksToAdd]);
-    if (financeToAdd.length) setFinance(list => [...list, ...financeToAdd]);
-    if (workoutsToAdd.length) setWorkouts(list => [...list, ...workoutsToAdd]);
-    if (goalsToAdd.length) setGoals(list => [...list, ...goalsToAdd]);
-    const mealsToAdd: MealEntry[] = items.filter(item => item.type === 'meal').map(item => ({ id: uid(), food: item.name.trim(), date: item.date!, meal: item.meal!, calories: item.calories!, protein: item.protein!, carbs: item.carbs!, fat: item.fat! }));
-    if (mealsToAdd.length) setMeals(list => [...list, ...mealsToAdd]);
-    const waterToAdd: WaterEntry[] = items.filter(item => item.type === 'water').map(item => ({ id: uid(), date: item.date!, amount: item.amount! }));
-    if (waterToAdd.length) setWater(list => [...list, ...waterToAdd]);
-    say('Registros adicionados.');
+  const aiCollections: AICollections = {
+    habit: habits, event: tasks, goal: goals, workout: workouts,
+    meal: meals, water, finance, note: notes,
   };
 
-  const aiTargets: AITarget[] = [
-    ...habits.map(x => ({ type: 'habit' as const, id: x.id, name: x.name, detail: x.time })),
-    ...tasks.map(x => ({ type: 'event' as const, id: x.id, name: x.title, detail: `${x.date} ${x.time}` })),
-    ...finance.map(x => ({ type: 'finance' as const, id: x.id, name: x.description, detail: `${x.date} · ${x.amount}` })),
-    ...goals.map(x => ({ type: 'goal' as const, id: x.id, name: x.title, detail: x.due })),
-    ...workouts.map(x => ({ type: 'workout' as const, id: x.id, name: x.name, detail: `Dia ${x.day ?? '?'}` })),
-    ...meals.map(x => ({ type: 'meal' as const, id: x.id, name: x.food, detail: `${x.date} · ${x.meal}` })),
-    ...water.map(x => ({ type: 'water' as const, id: x.id, name: 'Água', detail: `${x.date} · ${x.amount} ml` })),
-    ...((): AITarget[] => { try { const notes: unknown = JSON.parse(localStorage.getItem('azyrus-notes-v1') || '[]'); return Array.isArray(notes) ? notes.filter(x => typeof x?.id === 'string' && typeof x?.title === 'string').map(x => ({ type: 'note' as const, id: x.id, name: x.title, detail: x.updatedAt || '' })) : []; } catch { return []; } })()
-  ];
+  const confirmAI = async (review: AIReview) => {
+    if (!review.valid) throw new Error('Resolva as pendências antes de confirmar.');
+    if (storageErrors.some(Boolean)) throw new Error('Aguarde o salvamento das alterações anteriores ou use Tentar salvar.');
+    const stores = {
+      habit: ['habits', habitStore], event: ['tasks', taskStore],
+      goal: ['goals', goalStore], workout: ['workouts', workoutStore],
+      meal: ['meals', mealStore], water: ['water', waterStore],
+      finance: ['finance', financeStore], note: ['notes', noteStore],
+    } as const;
+    const writes = Array.from(review.changes, ([type, after]) => {
+      const [key, store] = stores[type];
+      if (!store.isSaved) throw new Error('Aguarde o salvamento das alterações anteriores.');
+      // The planner maintains the record type of each collection.
+      const publish = store.adopt as (value: typeof after) => void;
+      return { key, before: store.stored.current, after, publish };
+    });
+    await dbCommitBatch(writes);
+    writes.forEach(({ after, publish }) => publish(after));
+  };
 
   const enableNotifications = async () => {
     try {
@@ -287,9 +218,9 @@ export default function App() {
     'more'
   ];
 
-  const storageErrors = [e1, e2, e3, e4, e5, e6, e7];
+  const storageErrors = [e1, e2, e3, e4, e5, e6, e7, notesError];
   if (storageErrors.includes('read')) return <div className="h-dvh grid place-items-center px-6 text-center"><div><p>Não foi possível ler os dados deste aparelho. Nenhum dado foi substituído.</p><Btn className="mt-4" onClick={() => window.location.reload()}>Tentar novamente</Btn></div></div>;
-  if (!(r1 && r2 && r3 && r4 && r5 && r6 && r7)) {
+  if (!(r1 && r2 && r3 && r4 && r5 && r6 && r7 && notesReady)) {
     return (
       <div className="h-dvh grid place-items-center text-2xl font-light tracking-[.3em]">
         AZYRUS
@@ -344,6 +275,8 @@ export default function App() {
       />
     ) : tab === 'tasks' ? (
       <Tasks
+        notes={notes}
+        setNotes={setNotes}
         tasks={tasks}
         setTasks={setTasks}
         say={say}
@@ -421,7 +354,7 @@ export default function App() {
 
   return (
     <div className="h-dvh flex flex-col">
-      <main key={tab + ':' + morePage} className="app-main min-h-0 flex-1 overflow-y-auto">
+      <main key={tab + ':' + morePage} ref={element => { if (element) element.inert = showAssistant; }} className="app-main min-h-0 flex-1 overflow-y-auto">
         <div className="app-content" data-page={tab}>
           <header className="app-brand">
             <span className="wordmark"><Asterisk className="brand-symbol" size={22} strokeWidth={2.5} aria-hidden="true" />AZYRUS</span>
@@ -457,8 +390,9 @@ export default function App() {
       </main>
 
       {storageErrors.includes('write') ? <div role="alert" className="fixed top-0 inset-x-0 z-50 bg-red-800 text-white p-3 text-center text-sm">Não foi possível salvar os dados. Mantenha o aplicativo aberto e tente novamente. <button className="underline" onClick={() => window.dispatchEvent(new Event('azyrus-retry-save'))}>Tentar salvar</button></div> : storageErrors.includes('saving') ? <div role="status" className="fixed top-0 inset-x-0 z-50 bg-sf text-tx p-2 text-center text-sm">Salvando alterações...</div> : null}
-      {showAssistant && <Assistant onClose={() => setShowAssistant(false)} onConfirm={confirmAI} targets={aiTargets} />}
+      {showAssistant && <Assistant onClose={() => setShowAssistant(false)} onConfirm={confirmAI} collections={aiCollections} targets={listTargets(aiCollections)} />}
       <nav
+        ref={element => { if (element) element.inert = showAssistant; }}
         className="app-nav shrink-0"
         aria-label="Navegação principal"
       >

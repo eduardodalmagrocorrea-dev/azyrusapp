@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Plus,
   Search,
@@ -12,7 +12,7 @@ import {
   FileText,
   X,
 } from 'lucide-react';
-import type { Setter, Task } from '../types';
+import type { Setter, Task, Note } from '../types';
 import { Btn, Card, Empty, Field, Head, Sel, Sheet, cx } from '../ui';
 import { today, uid } from '../utils';
 
@@ -26,17 +26,9 @@ const MONTHS = [
 ];
 
 const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-const NOTES_KEY = 'azyrus-notes-v1';
-
-type Note = {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
 type P = {
+  notes: Note[];
+  setNotes: Setter<Note[]>;
   tasks: Task[];
   setTasks: Setter<Task[]>;
   say: (message: string) => void;
@@ -83,32 +75,8 @@ const blankNote = (): Note => {
   };
 };
 
-function loadNotes(): Note[] {
-  try {
-    const stored = localStorage.getItem(NOTES_KEY);
-    if (!stored) return [];
-
-    const parsed: unknown = JSON.parse(stored);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter(
-      (item): item is Note =>
-        item !== null &&
-        typeof item === 'object' &&
-        typeof item.id === 'string' &&
-        typeof item.title === 'string' &&
-        typeof item.content === 'string' &&
-        typeof item.createdAt === 'string' &&
-        typeof item.updatedAt === 'string'
-    );
-  } catch {
-    return [];
-  }
-}
-
-export default function Tasks({ tasks, setTasks, say }: P) {
+export default function Tasks({ tasks, setTasks, notes, setNotes, say }: P) {
   const [tab, setTab] = useState<'notes' | 'calendar'>('calendar');
-  const [notes, setNotes] = useState<Note[]>(loadNotes);
   const [search, setSearch] = useState('');
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [viewingNote, setViewingNote] = useState<Note | null>(null);
@@ -116,20 +84,6 @@ export default function Tasks({ tasks, setTasks, say }: P) {
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
   const [selectedDate, setSelectedDate] = useState(today());
-
-  useEffect(() => {
-    const refreshNotes = () => setNotes(loadNotes());
-    window.addEventListener('azyrus-notes-changed', refreshNotes);
-    return () => window.removeEventListener('azyrus-notes-changed', refreshNotes);
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
-    } catch {
-      say('Não foi possível salvar as notas neste aparelho');
-    }
-  }, [notes]);
 
   const filteredNotes = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('pt-BR');

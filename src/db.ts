@@ -16,13 +16,27 @@ export async function dbGet<T>(k: string) {
   });
 }
 
-export async function dbSet(k: string, v: unknown) {
-  const d = await open();
-  return new Promise<void>((res, rej) => {
-    const t = d.transaction('kv', 'readwrite');
-    t.objectStore('kv').put(v, k);
-    t.oncomplete = () => res();
-    t.onerror = () => rej(t.error);
-    t.onabort = () => rej(t.error ?? new Error('Transação cancelada.'));
+export async function dbCommitBatch(changes: { key: string; before: unknown; after: unknown }[]) {
+  const db = await open();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction('kv', 'readwrite');
+    const store = transaction.objectStore('kv');
+    let failure: Error | undefined;
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(failure ?? transaction.error ?? new Error('Não foi possível salvar o lote.'));
+    for (const { key, before, after } of changes) {
+      const request = store.get(key);
+      request.onsuccess = () => {
+        try {
+          if (JSON.stringify(request.result) !== JSON.stringify(before)) {
+            throw new Error('Os dados mudaram em outra janela. Reabra o aplicativo e revise o comando.');
+          }
+          store.put(after, key);
+        } catch (error) {
+          failure = error instanceof Error ? error : undefined;
+          transaction.abort();
+        }
+      };
+    }
   });
 }

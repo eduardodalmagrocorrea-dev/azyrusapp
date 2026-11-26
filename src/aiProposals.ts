@@ -21,35 +21,35 @@ export type Proposal = {
   fat?: number;
   day?: number;
   exercises?: { name: string; count?: number; reps?: number; weight: number; rest?: number }[];
-  exerciseChange?: { operation: 'add' | 'update' | 'remove'; name: string; newName?: string; count?: number; reps?: number; weight?: number; rest?: number };
+  exerciseChange?: ExerciseChange;
+  exerciseChanges?: ExerciseChange[];
 };
+type ExerciseChange = { operation: 'add' | 'update' | 'remove'; name: string; newName?: string; count?: number; reps?: number; weight?: number; rest?: number };
+
 const dateOk = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00Z')) && new Date(v + 'T00:00:00Z').toISOString().slice(0, 10) === v;
 export function validateProposals(input: unknown): Proposal[] {
-  if (!Array.isArray(input) || !input.length || input.length > 20) throw new Error('A interpretação precisa conter entre 1 e 20 registros.');
+  if (!Array.isArray(input) || !input.length || input.length > 100) throw new Error('A interpretação precisa conter entre 1 e 100 registros.');
   return input.map((item: any) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Registro inválido.');
-    const allowed = ['type', 'name', 'action', 'targetId', 'expectedUpdatedAt', 'newName', 'date', 'time', 'days', 'reminder', 'amount', 'direction', 'category', 'description', 'day', 'exercises', 'exerciseChange', 'meal', 'calories', 'protein', 'carbs', 'fat'];
+    const allowed = ['type', 'name', 'action', 'targetId', 'expectedUpdatedAt', 'newName', 'date', 'time', 'days', 'reminder', 'amount', 'direction', 'category', 'description', 'day', 'exercises', 'exerciseChange', 'exerciseChanges', 'meal', 'calories', 'protein', 'carbs', 'fat'];
     if (Object.keys(item).some(key => !allowed.includes(key))) throw new Error('Campo desconhecido na interpretação.');
     if (!['habit', 'event', 'finance', 'goal', 'workout', 'note', 'meal', 'water'].includes(item.type) || typeof item.name !== 'string' || !item.name.trim() || item.name.length > 200) throw new Error('Informe um tipo válido e um nome de até 200 caracteres.');
     if (item.action !== undefined && !['create', 'delete', 'update'].includes(item.action)) throw new Error('Operação inválida.');
     if (item.action === 'update') {
-      const fields: Record<string, string[]> = { habit: ['newName','category','time','days','reminder'], event: ['newName','category','date','time'], finance: ['newName','category','date','amount','direction'], goal: ['newName','category','date','description'], workout: ['newName','day','exerciseChange'], note: ['newName','description'], meal: ['newName','date','meal','calories','protein','carbs','fat'], water: ['date','amount'] };
-      const changed = Object.keys(item).filter(key => !['type','name','action','targetId','expectedUpdatedAt'].includes(key));
+      const fields: Record<string, string[]> = { habit: ['newName','category','time','days','reminder'], event: ['newName','category','date','time'], finance: ['newName','category','date','amount','direction'], goal: ['newName','category','date','description'], workout: ['newName','day','exerciseChange','exerciseChanges'], note: ['newName','description'], meal: ['newName','date','meal','calories','protein','carbs','fat'], water: ['date','amount'] };
+      const changed = Object.keys(item).filter(key => item[key] !== undefined && !['type','name','action','targetId','expectedUpdatedAt'].includes(key));
       if (!changed.length || changed.some(key => !fields[item.type].includes(key))) throw new Error('Campos de edição inválidos.');
       if (item.targetId !== undefined && (typeof item.targetId !== 'string' || !item.targetId || item.targetId.length > 200)) throw new Error('Registro selecionado inválido.');
       if (item.expectedUpdatedAt !== undefined && (item.type !== 'note' || typeof item.expectedUpdatedAt !== 'string' || item.expectedUpdatedAt.length > 100)) throw new Error('Versão da nota inválida.');
-      if (item.exerciseChange !== undefined) {
-        const e = item.exerciseChange;
-        if (!e || typeof e !== 'object' || Array.isArray(e) || Object.keys(e).some(k => !['operation','name','newName','count','reps','weight','rest'].includes(k)) || !['add','update','remove'].includes(e.operation) || typeof e.name !== 'string' || !e.name.trim() || e.name.length > 200) throw new Error('Exercício inválido.');
-        if (e.newName !== undefined && (typeof e.newName !== 'string' || !e.newName.trim() || e.newName.length > 200)) throw new Error('Nome de exercício inválido.');
-        for (const key of ['count','reps','rest']) if (e[key] !== undefined && (!Number.isInteger(e[key]) || e[key] < (key === 'rest' ? 0 : 1) || e[key] > (key === 'count' ? 30 : key === 'reps' ? 1000 : 86400))) throw new Error('Valor do exercício inválido.');
-        if (e.weight !== undefined && (typeof e.weight !== 'number' || !Number.isFinite(e.weight) || e.weight < 0 || e.weight > 10000)) throw new Error('Carga inválida.');
-        if (e.operation === 'add' && e.weight === undefined) throw new Error('Informe a carga para o novo exercício.');
-        if (e.operation === 'remove' && Object.keys(e).some(k => !['operation','name'].includes(k))) throw new Error('Remoção de exercício inválida.');
-        if (e.operation === 'update' && !['newName','count','reps','weight','rest'].some(k => e[k] !== undefined)) throw new Error('Informe o que deseja alterar no exercício.');
+      if (item.exerciseChange !== undefined) validateExerciseChange(item.exerciseChange);
+      if (item.exerciseChanges !== undefined) {
+        if (item.exerciseChange !== undefined || !Array.isArray(item.exerciseChanges) || !item.exerciseChanges.length || item.exerciseChanges.length > 30) {
+          throw new Error('A edição do treino deve conter entre 1 e 30 alterações de exercícios.');
+        }
+        item.exerciseChanges.forEach(validateExerciseChange);
       }
       if (item.date !== undefined && !dateOk(item.date)) throw new Error('Data inválida.');
-      for (const key of ['newName','category','description']) if (item[key] !== undefined && (typeof item[key] !== 'string' || !item[key].trim() || item[key].length > (key === 'description' && item.type === 'note' ? 12000 : 1000))) throw new Error('Texto inválido.');
+      for (const key of ['newName','category','description']) if (item[key] !== undefined && (typeof item[key] !== 'string' || !item[key].trim() || item[key].length > (key === 'newName' ? 200 : key === 'description' && item.type === 'note' ? 12000 : 1000))) throw new Error('Texto inválido.');
       if (item.time !== undefined && (typeof item.time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(item.time))) throw new Error('Horário inválido.');
       if (item.days !== undefined && (!Array.isArray(item.days) || !item.days.length || item.days.some((d: unknown) => !Number.isInteger(d) || (d as number) < 0 || (d as number) > 6) || new Set(item.days).size !== item.days.length)) throw new Error('Dias inválidos.');
       if (item.reminder !== undefined && typeof item.reminder !== 'boolean') throw new Error('Lembrete inválido.');
@@ -64,7 +64,15 @@ export function validateProposals(input: unknown): Proposal[] {
       if (Object.keys(item).some(key => !['type', 'name', 'action', 'targetId'].includes(key))) throw new Error('Dados inesperados na exclusão.');
       return item as Proposal;
     }
-    if (item.targetId !== undefined) throw new Error('Operação inválida.');
+    const createFields: Record<Proposal['type'], string[]> = {
+      habit: ['category','time','days','reminder'], event: ['category','date','time'],
+      finance: ['category','date','amount','direction'], goal: ['category','date','description'],
+      workout: ['day','exercises'], note: ['description'],
+      meal: ['date','meal','calories','protein','carbs','fat'], water: ['date','amount'],
+    };
+    if (Object.keys(item).some(key => !['type','action','name',...createFields[item.type as Proposal['type']]].includes(key))) {
+      throw new Error('Campos de criação inválidos.');
+    }
     for (const key of ['category', 'description']) if (item[key] !== undefined && (typeof item[key] !== 'string' || item[key].length > 1000)) throw new Error('Texto inválido.');
     if (item.type === 'note' && (typeof item.description !== 'string' || !item.description.trim())) throw new Error('Informe o conteúdo da nota.');
     if (item.type === 'meal') {
@@ -88,4 +96,14 @@ export function validateProposals(input: unknown): Proposal[] {
     if (item.type === 'finance' && (!['receita','despesa'].includes(item.direction) || typeof item.amount !== 'number' || !Number.isFinite(item.amount) || item.amount <= 0 || item.amount > 1000000000)) throw new Error('Informe o tipo e um valor financeiro positivo.');
     return item as Proposal;
   });
+}
+
+function validateExerciseChange(e: any) {
+  if (!e || typeof e !== 'object' || Array.isArray(e) || Object.keys(e).some(k => !['operation','name','newName','count','reps','weight','rest'].includes(k)) || !['add','update','remove'].includes(e.operation) || typeof e.name !== 'string' || !e.name.trim() || e.name.length > 200) throw new Error('Exercício inválido.');
+  if (e.newName !== undefined && (typeof e.newName !== 'string' || !e.newName.trim() || e.newName.length > 200)) throw new Error('Nome de exercício inválido.');
+  for (const key of ['count','reps','rest']) if (e[key] !== undefined && (!Number.isInteger(e[key]) || e[key] < (key === 'rest' ? 0 : 1) || e[key] > (key === 'count' ? 30 : key === 'reps' ? 1000 : 86400))) throw new Error('Valor do exercício inválido.');
+  if (e.weight !== undefined && (typeof e.weight !== 'number' || !Number.isFinite(e.weight) || e.weight < 0 || e.weight > 10000)) throw new Error('Carga inválida.');
+  if (e.operation === 'add' && e.weight === undefined) throw new Error('Informe a carga para o novo exercício.');
+  if (e.operation === 'remove' && Object.keys(e).some(k => !['operation','name'].includes(k))) throw new Error('Remoção de exercício inválida.');
+  if (e.operation === 'update' && !['newName','count','reps','weight','rest'].some(k => e[k] !== undefined)) throw new Error('Informe o que deseja alterar no exercício.');
 }

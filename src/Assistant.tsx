@@ -1,14 +1,19 @@
-﻿import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUp, LoaderCircle, Mic, Square } from 'lucide-react';
 import { Btn, Field, Sel, Sheet } from './ui';
 import { validateProposals } from './aiProposals';
 import type { Proposal } from './aiProposals';
+import { catalogForCommand, categoryLabels, deletionDetails, describeRecord, matchingTargets, reviewBatch, type AICollections, type AIReview, type AITarget } from './aiBatch';
 import { today } from './utils';
 
 type SpeechInstance = { lang: string; onresult: ((event: any) => void) | null; onerror: (() => void) | null; onend: (() => void) | null; start: () => void; stop: () => void };
 type SpeechWindow = Window & { SpeechRecognition?: new () => SpeechInstance; webkitSpeechRecognition?: new () => SpeechInstance };
-export type AITarget = { type: Proposal['type']; id: string; name: string; detail: string };
-export default function Assistant({ onClose, onConfirm, targets }: { onClose: () => void; onConfirm: (items: Proposal[]) => void; targets: AITarget[] }) {
+export default function Assistant({ onClose, onConfirm, targets, collections }: {
+  onClose: () => void;
+  onConfirm: (review: AIReview) => Promise<void>;
+  targets: AITarget[];
+  collections: AICollections;
+}) {
   const [command, setCommand] = useState('');
   const [result, setResult] = useState('');
   const [draft, setDraft] = useState<Proposal[]>([]);
@@ -16,6 +21,9 @@ export default function Assistant({ onClose, onConfirm, targets }: { onClose: ()
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const [noteId, setNoteId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const committing = useRef(false);
+  const review = useMemo(() => reviewBatch(draft, collections, targets), [draft, collections, targets]);
   const speech = useRef<SpeechInstance | null>(null);
   const Speech = (window as SpeechWindow).SpeechRecognition || (window as SpeechWindow).webkitSpeechRecognition;
   useEffect(() => () => { speech.current?.stop(); }, []);
@@ -31,10 +39,10 @@ export default function Assistant({ onClose, onConfirm, targets }: { onClose: ()
     } catch { setError('Não foi possível iniciar o microfone.'); }
   };
   const send = async () => {
-    if (busy || !command.trim()) return;
+    if (busy || committing.current || !command.trim()) return;
     setBusy(true); setError(''); setResult(''); setDraft([]);
     try {
-      const response = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, today: today() }) });
+      const response = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, today: today(), records: catalogForCommand(targets) }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Erro ao processar comando.');
       setResult(data.mensagem || 'Confira os dados identificados.');
@@ -43,12 +51,11 @@ export default function Assistant({ onClose, onConfirm, targets }: { onClose: ()
     finally { setBusy(false); }
   };
   const transformNote = async (mode: 'summary' | 'organize') => {
-    if (busy || !noteId) return;
+    if (busy || committing.current || !noteId) return;
     setBusy(true); setError(''); setResult(''); setDraft([]);
     try {
-      const notes: unknown = JSON.parse(localStorage.getItem('azyrus-notes-v1') || '[]');
-      const selected = Array.isArray(notes) ? notes.find(n => n?.id === noteId) : undefined;
-      if (!selected || typeof selected.title !== 'string' || typeof selected.content !== 'string' || typeof selected.updatedAt !== 'string') throw new Error('Nota não encontrada.');
+      const selected = collections.note.find(note => note.id === noteId);
+      if (!selected) throw new Error('Nota não encontrada.');
       const response = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: mode === 'summary' ? 'Resumir nota' : 'Organizar nota', today: today(), noteMode: mode, noteContent: selected.content }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Não foi possível processar a nota.');
@@ -57,35 +64,77 @@ export default function Assistant({ onClose, onConfirm, targets }: { onClose: ()
     } catch (e) { setError(e instanceof Error ? e.message : 'Não foi possível processar a nota.'); }
     finally { setBusy(false); }
   };
-  return <Sheet title="AZYRUS AI" onClose={onClose}>
+  const confirm = async () => {
+    if (committing.current || !review.valid) return;
+    committing.current = true;
+    setSaving(true);
+    setError('');
+    try {
+      await onConfirm(review);
+      setDraft([]);
+      setResult('Alterações confirmadas.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Falha no salvamento. Nenhuma alteração do lote foi aplicada.');
+    } finally {
+      committing.current = false;
+      setSaving(false);
+    }
+  };
+
+  return <Sheet title="AZYRUS AI" onClose={() => { if (!committing.current) onClose(); }}>
     <label className="block text-sm text-mu mb-2" htmlFor="ai-command">O que deseja organizar?</label>
     <div className="rounded-xl border border-ln bg-bg p-2 focus-within:border-ac">
       <textarea id="ai-command" className="block w-full resize-y rounded-lg bg-transparent p-2 text-tx" rows={3} maxLength={4000} value={command} onChange={e => setCommand(e.target.value)} placeholder="Digite seu comando" />
       <div className="mt-2 flex items-center justify-end gap-2">
         {busy && <span className="mr-auto text-sm text-mu" role="status">Processando…</span>}
         {Speech && <Btn variant="ghost" onClick={listen} aria-pressed={recording} aria-label={recording ? 'Parar gravação' : 'Falar comando'}>{recording ? <Square size={16} /> : <Mic size={18} />}</Btn>}
-        <Btn onClick={send} disabled={busy || !command.trim()} aria-label="Enviar comando">{busy ? <LoaderCircle size={18} className="motion-safe:animate-spin" /> : <ArrowUp size={20} />}</Btn>
+        <Btn onClick={send} disabled={saving || busy || !command.trim()} aria-label="Enviar comando">{busy ? <LoaderCircle size={18} className="motion-safe:animate-spin" /> : <ArrowUp size={20} />}</Btn>
       </div>
     </div>
+    <p className="mt-2 text-xs text-mu">Os nomes e tipos dos registros acompanham o comando enviado à IA.</p>
     {!Speech && <p className="text-xs text-mu mt-2">Reconhecimento de voz indisponível neste navegador. Use o texto.</p>}
-    {targets.some(target => target.type === 'note') && <details className="mt-4 rounded-xl border border-ln p-3"><summary className="cursor-pointer text-sm text-ac">Resumir ou organizar uma nota</summary><div className="mt-3"><Sel label="Nota" value={noteId} onChange={e => setNoteId(e.target.value)}><option value="">Selecione uma nota</option>{targets.filter(target => target.type === 'note').map(target => <option key={target.id} value={target.id}>{target.name} — {target.detail}</option>)}</Sel><p className="text-xs text-mu mb-3">O conteúdo da nota selecionada será enviado ao Gemini.</p><div className="flex gap-2"><Btn variant="ghost" className="flex-1" disabled={!noteId || busy} onClick={() => transformNote('summary')}>Resumir</Btn><Btn variant="ghost" className="flex-1" disabled={!noteId || busy} onClick={() => transformNote('organize')}>Organizar</Btn></div></div></details>}
+    {targets.some(target => target.type === 'note') && <details className="mt-4 rounded-xl border border-ln p-3"><summary className="cursor-pointer text-sm text-ac">Resumir ou organizar uma nota</summary><div className="mt-3"><Sel label="Nota" value={noteId} onChange={e => setNoteId(e.target.value)}><option value="">Selecione uma nota</option>{targets.filter(target => target.type === 'note').map(target => <option key={target.id} value={target.id}>{target.name} — {target.detail}</option>)}</Sel><p className="text-xs text-mu mb-3">O conteúdo da nota selecionada será enviado ao Gemini.</p><div className="flex gap-2"><Btn variant="ghost" className="flex-1" disabled={saving || !noteId || busy} onClick={() => transformNote('summary')}>Resumir</Btn><Btn variant="ghost" className="flex-1" disabled={saving || !noteId || busy} onClick={() => transformNote('organize')}>Organizar</Btn></div></div></details>}
     {error && <p role="alert" className="form-error mt-3 text-sm">{error}</p>}
     {result && <div className="mt-4"><p className="font-medium">Interpretação</p><p className="whitespace-pre-wrap text-sm text-mu mt-2">{result}</p></div>}
     {draft.length > 0 && <h3 className="mt-5 font-semibold">Prévia das alterações</h3>}
     {draft.map((item, index) => {
       const change = (patch: Partial<Proposal>) => setDraft(current => current.map((p, i) => i === index ? { ...p, ...patch } : p));
       const number = (value: string) => value === '' ? undefined : Number(value);
-      const normalize = (text: string) => text.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-      const matches = targets.filter(target => target.type === item.type && normalize(target.name).includes(normalize(item.name)));
-      return <div key={index} className="mt-3 rounded-xl border border-ln bg-bg/50 p-4">
-        <p className="font-medium mb-3">{({ habit: 'Hábito', event: 'Evento', finance: 'Finanças', goal: 'Meta', workout: 'Treino', note: 'Nota', meal: 'Refeição', water: 'Água' })[item.type]}</p>
-        {item.action === 'delete' || item.action === 'update' ? <><p className="text-sm mb-2">Selecione o registro. A alteração só ocorrerá ao confirmar.</p><Sel label="Registro" value={item.targetId || ''} onChange={e => change({ targetId: e.target.value || undefined })}><option value="">Selecione um registro</option>{matches.map(target => <option key={target.id} value={target.id}>{target.name}{target.detail ? ` — ${target.detail}` : ''}</option>)}</Sel>{matches.length === 0 && <p className="text-sm text-mu">Nenhum registro encontrado. Reformule o comando com o nome exato.</p>}{item.action === 'update' && <>
+      const matches = matchingTargets(item, targets);
+      const preview = review.previews[index];
+      const editing = item.action === 'update';
+      const deleting = item.action === 'delete';
+      const current: Record<string, string | number | undefined> = preview.before
+        ? { ...describeRecord(preview.before), ...(deleting ? deletionDetails(preview.before) : {}) }
+        : {};
+      const next: Record<string, string | number> = preview.after ? describeRecord(preview.after) : {};
+      const fields = Object.keys(preview.after ? next : current).filter(key => !editing || current[key] !== next[key]);
+      return <fieldset disabled={saving} key={index} className="mt-3 min-w-0 rounded-xl border border-ln bg-bg/50 p-4">
+        <p className="font-medium mb-3">{deleting ? 'Excluir' : editing ? 'Editar' : 'Criar'} · {categoryLabels[item.type]} · {item.name}</p>
+        {preview.error && <p role="alert" className="form-error mb-3 text-sm">{preview.error}</p>}
+        {fields.length > 0 && <div className="mb-4 space-y-2 text-sm">
+          <div className="grid grid-cols-2 gap-2 font-medium"><span>Atual</span><span>Novo</span></div>
+          <dl className="space-y-2">{fields.map(field => <div key={field}>
+            <dt className="text-mu">{field}</dt>
+            <dd className="grid grid-cols-2 gap-2 whitespace-pre-wrap break-words">
+              <span>{current[field] === '' ? 'Sem valor' : current[field] ?? '—'}</span>
+              <span>{next[field] === '' ? 'Sem valor' : next[field] ?? (deleting ? 'Removido' : '—')}</span>
+            </dd>
+          </div>)}</dl>
+        </div>}
+        {!preview.error && editing && fields.length === 0 && <p className="mb-3 text-sm text-mu">Os valores propostos já são os atuais.</p>}
+        {deleting || editing ? <>
+          {matches.length > 1 && <Sel label="Qual registro?" value={item.targetId || ''} onChange={e => change({ targetId: e.target.value || undefined })}>
+            <option value="">Selecione um registro</option>
+            {matches.map(target => <option key={target.id} value={target.id}>{target.name}{target.detail ? ` · ${target.detail}` : ''}</option>)}
+          </Sel>}
+          {editing && <>
           {item.newName !== undefined && <Field label="Novo nome" value={item.newName} onChange={e => change({newName:e.target.value})} />}
           {item.date !== undefined && <Field label="Nova data" type="date" value={item.date} onChange={e => change({date:e.target.value})} />}
           {item.time !== undefined && <Field label="Novo horário" type="time" value={item.time} onChange={e => change({time:e.target.value})} />}
           {item.category !== undefined && <Field label="Nova categoria" value={item.category} onChange={e => change({category:e.target.value})} />}
           {item.description !== undefined && <label className="block mb-3 text-sm text-mu">Novo texto<textarea className="mt-1 w-full rounded-xl bg-bg border border-ln p-3 text-tx" rows={5} value={item.description} onChange={e => change({description:e.target.value})} /></label>}
-          {(['amount','calories','protein','carbs','fat'] as const).map(key => item[key] !== undefined && <Field key={key} label={({amount:item.type === 'water' ? 'Volume (ml)' : 'Valor',calories:'Calorias',protein:'Proteína',carbs:'Carboidratos',fat:'Gorduras'})[key]} type="number" min="0" step="0.01" value={item[key]} onChange={e => change({[key]:number(e.target.value)})} />)}
+          {(['amount','calories','protein','carbs','fat'] as const).map(key => item[key] !== undefined && <Field key={key} label={({amount:item.type === 'water' ? 'Volume (ml)' : 'Valor',calories:'Calorias',protein:'Proteína',carbs:'Carboidratos',fat:'Gorduras'})[key]} type="number" min="0" step="0.01" value={item[key]} onChange={e => change({[key]:number(e.target.value) ?? NaN})} />)}
           {item.direction !== undefined && <Sel label="Tipo" value={item.direction} onChange={e => change({direction:e.target.value as 'receita'|'despesa'})}><option value="receita">Receita</option><option value="despesa">Despesa</option></Sel>}
           {item.meal !== undefined && <Sel label="Refeição" value={item.meal} onChange={e => change({meal:e.target.value})}>{['Café da manhã','Almoço','Lanche','Jantar','Outro'].map(x => <option key={x}>{x}</option>)}</Sel>}
           {item.day !== undefined && <Sel label="Dia do treino" value={item.day} onChange={e => change({day:Number(e.target.value)})}>{['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'].map((x,i) => <option key={x} value={i}>{x}</option>)}</Sel>}
@@ -108,8 +157,11 @@ export default function Assistant({ onClose, onConfirm, targets }: { onClose: ()
         })}</>}
         </>}
         <button type="button" className="text-sm text-mu underline" onClick={() => setDraft(current => current.filter((_, i) => i !== index))}>Remover da prévia</button>
-      </div>;
+      </fieldset>;
     })}
-    {draft.length > 0 && <div className="flex gap-2 mt-4"><Btn className="flex-1" onClick={() => { try { if (draft.some(item => (item.action === 'delete' || item.action === 'update') && !item.targetId)) throw new Error('Selecione cada registro que deseja alterar.'); onConfirm(validateProposals(draft)); setDraft([]); setError(''); setResult('Alterações confirmadas.'); } catch (e) { setError(e instanceof Error ? e.message : 'Dados inválidos.'); } }}>Confirmar</Btn><Btn variant="ghost" onClick={() => { setDraft([]); setResult('Alterações canceladas.'); }}>Cancelar</Btn></div>}
+    {draft.length > 0 && <div className="flex gap-2 mt-4">
+      <Btn className="flex-1" disabled={saving || !review.valid} onClick={confirm}>{saving ? 'Salvando…' : `Confirmar todas (${draft.length})`}</Btn>
+      <Btn variant="ghost" disabled={saving} onClick={() => { setDraft([]); setError(''); setResult('Alterações canceladas.'); }}>Cancelar</Btn>
+    </div>}
   </Sheet>;
 }

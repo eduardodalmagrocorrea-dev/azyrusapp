@@ -22,6 +22,9 @@ export function applyExerciseChange(workout: Workout, change: NonNullable<Propos
   if (matches.length !== 1) throw new Error(matches.length ? 'Há exercícios com o mesmo nome. Edite-os manualmente.' : 'Exercício não encontrado no treino selecionado.');
   const selected = matches[0];
   if (change.operation === 'remove') return { ...workout, exercises: workout.exercises.filter(e => e.id !== selected.id) };
+  if (change.newName && workout.exercises.some(e => e.id !== selected.id && normalize(e.name) === normalize(change.newName!))) {
+    throw new Error('Já existe um exercício com o novo nome.');
+  }
   const count = change.count ?? selected.sets.length;
   if (selected.sets.length === 0 && count === 0) return { ...workout, exercises: workout.exercises.map(e => e.id === selected.id ? { ...e, name: change.newName ?? e.name, rest: change.rest ?? e.rest, pendingWeight: change.weight ?? e.pendingWeight, pendingReps: change.reps ?? e.pendingReps } : e) };
   if (selected.sets.length === 0 && count > 0) {
@@ -34,7 +37,7 @@ export function applyExerciseChange(workout: Workout, change: NonNullable<Propos
   if (count > selected.sets.length && (change.reps === undefined || change.weight === undefined)) throw new Error('Informe repetições e carga para as novas séries.');
   const sets = Array.from({ length: count }, (_, i) => {
     const old = selected.sets[i];
-    return { id: old?.id ?? uid(), reps: change.reps ?? old.reps, weight: change.weight ?? old.weight };
+    return { ...old, id: old?.id ?? uid(), reps: change.reps ?? old.reps, weight: change.weight ?? old.weight };
   });
   return { ...workout, exercises: workout.exercises.map(e => e.id === selected.id ? { ...e, name: change.newName ?? e.name, rest: change.rest ?? e.rest, sets } : e) };
 }
