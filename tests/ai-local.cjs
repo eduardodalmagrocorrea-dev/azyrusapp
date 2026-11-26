@@ -104,6 +104,17 @@ async function checkBatch() {
   assert.equal(removed.valid, true);
   await syncHabitReminders(removed.changes.get('habit'));
   assert.deepEqual(calls[1].body.reminders, []);
+  const mixed = review([
+    { type: 'habit', action: 'create', name: 'Caminhada', daysText: 'todos os dias', time: '07:30', reminder: true },
+    { type: 'habit', action: 'update', name: 'Meditação', time: '08:00' },
+    { type: 'finance', action: 'delete', name: 'Mercado' },
+  ]);
+  assert.equal(mixed.valid, true);
+  assert.equal(mixed.changes.get('habit')[0].days, collections.habit[0].days);
+  assert.equal(mixed.changes.get('habit')[0].done, collections.habit[0].done);
+  assert.equal(mixed.changes.get('habit')[0].reminderEnabled, true);
+  assert.equal(mixed.changes.get('habit')[1].days.join(), '0,1,2,3,4,5,6');
+  assert.equal(mixed.changes.get('finance').length, 0);
 }
 let modelCalls = 0;
 let modelStatus = 200;
@@ -165,6 +176,33 @@ const ai = load('api/ai.ts', { './lib/security.js': security, '../src/aiProposal
   assert.equal(res.code, 200);
   assert.deepEqual(JSON.parse(modelBody.contents[0].parts[0].text).registrosExistentes, records);
   assert.equal(res.body.registros.length, 3);
+  const testedDays = [
+    ['todo dia', '0,1,2,3,4,5,6'],
+    ['de segunda-feira à sexta-feira', '1,2,3,4,5'],
+    ['às segundas-feiras, quartas e sábados', '1,3,6'],
+    ['sexta até domingo', '0,5,6'],
+    ['aos fins de semana', '0,6'],
+    [['Seg', 'quarta-feira', 1, '5'], '1,3,5'],
+  ];
+  for (const [value, expected] of testedDays) {
+    const [habit] = validate([{ type: 'habit', action: 'update', name: 'Meditação', days: value }]);
+    assert.equal(habit.days.join(), expected);
+  }
+  for (const days of [[], [1, 7], 'segunda e feriados', null]) {
+    assert.throws(() => validate([{ type: 'habit', action: 'update', name: 'Meditação', days }]), /Informe os dias/);
+  }
+  assert.throws(() => validate([{ type: 'habit', action: 'update', name: 'Meditação', daysText: 'segunda a sexta', days: [0, 6] }]), /dois conjuntos/);
+  modelText = JSON.stringify({ mensagem: 'Confira o lote.', registros: [
+    { type: 'habit', name: 'Meditação', action: 'update', daysText: 'segunda a sexta' },
+    { type: 'habit', name: 'Caminhada', action: 'create', daysText: 'todos os dias', time: '07:00', reminder: true },
+    { type: 'note', name: 'Compras', action: 'delete' },
+  ] });
+  res = response();
+  await ai({ method: 'POST', headers: { ...base.headers, cookie }, body: { ...input, records } }, res);
+  assert.equal(res.code, 200);
+  assert.deepEqual(JSON.parse(JSON.stringify(res.body.registros.map(item => item.days ?? null))), [[1,2,3,4,5], [0,1,2,3,4,5,6], null]);
+  assert.equal(res.body.registros[0].daysText, undefined);
+  assert.throws(() => validate([{ type: 'habit', name: 'Meditação', action: 'update', time: '07:00 / 09:00' }]), /Horário inválido/);
   modelText = JSON.stringify({ mensagem: 'Informe o horário.', pendencia: true, registros: [
     { type: 'note', name: 'Compras', action: 'delete' },
   ] });
